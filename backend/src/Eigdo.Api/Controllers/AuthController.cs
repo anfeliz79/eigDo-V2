@@ -8,7 +8,7 @@ namespace Eigdo.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class AuthController : ControllerBase
+public class AuthController : EigdoControllerBase
 {
     private readonly AuthService _authService;
 

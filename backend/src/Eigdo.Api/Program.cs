@@ -27,6 +27,12 @@ builder.Services.AddInfrastructure(builder.Configuration);
 
 // Application services
 builder.Services.AddScoped<Eigdo.Application.Services.AuthService>();
+builder.Services.AddScoped<Eigdo.Application.Services.OnboardingService>();
+builder.Services.AddScoped<Eigdo.Application.Services.FiscalSettingsService>();
+builder.Services.AddScoped<Eigdo.Application.Services.CustomerMappingService>();
+builder.Services.AddScoped<Eigdo.Application.Services.VendorMappingService>();
+builder.Services.AddScoped<Eigdo.Application.Services.TaxMappingService>();
+builder.Services.AddScoped<Eigdo.Application.Services.ItemOverrideService>();
 
 // Authentication
 var jwtSecret = builder.Configuration.GetValue<string>("JWT_SECRET") ?? "development_secret_key_change_in_production_64chars_minimum!!!!!!!!";
