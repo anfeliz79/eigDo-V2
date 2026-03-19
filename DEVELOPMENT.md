@@ -105,6 +105,7 @@ eigdo-v2/
 - Final CTA, Footer
 - Logo: bold Inter wordmark "eigDo" with dark/blue split
 - All CTAs: "Comenzar Ahora" / "Crear Cuenta" (no "Gratis")
+- **CTAs navigate to app empresa** via `NEXT_PUBLIC_APP_URL` (default `http://localhost:3002/login`)
 
 ### App Empresa (port 3002) — DONE (v1)
 | Component | Status | Description |
@@ -120,10 +121,10 @@ eigdo-v2/
 | Onboarding wizard | Done | 7-step progress tracker with step navigation |
 | Documents list | Done | Paginated table with status badges, e-NCF, amounts |
 | Settings — Fiscal | Done | Full form: RNC, razon social, defaults (income type, unit, etc.) |
-| Settings — Customers | Done | Customer mapping table (Cycle 2) |
-| Settings — Vendors | Done | Vendor mapping table with retention rates (Cycle 3) |
-| Settings — Taxes | Done | Tax code mapping with billing indicator badges (Cycle 4) |
-| Settings — Items | Done | Item override table (Cycle 5) |
+| Settings — Customers | Done | Customer mapping table + **inline editing** (RNC, razon social, tipo, excluido) |
+| Settings — Vendors | Done | Vendor mapping table + **inline editing** (RNC, razon social, tipo, retenciones, excluido) |
+| Settings — Taxes | Done | Tax code mapping + **inline editing** (billingIndicator select) |
+| Settings — Items | Done | Item override table + **inline editing** (unitMeasure, goodServiceIndicator) |
 | Settings — QBO | Done | Connect/disconnect QuickBooks, status display |
 
 ### Admin (port 3001) — DONE (v1)
@@ -196,9 +197,14 @@ cd frontend/app && npm run dev       # port 3002
 cd frontend/admin && npm run dev     # port 3001
 ```
 
+## Tests (49 passing)
+```bash
+cd backend && dotnet test tests/Eigdo.UnitTests/      # 10 tests (RNC validation, webhook HMAC)
+cd backend && dotnet test tests/Eigdo.FiscalTests/     # 24 tests (TaxCalculator, RetentionCalculator, DiscountDistributor)
+```
+
 ## Remaining Work (Priority Order)
 1. **Admin API endpoints** — Company list, subscription management, audit log endpoints
-2. **Testing** — Unit tests for TaxCalculator, PayloadTransformer, RetentionCalculator
-3. **Form editing** — Customer/Vendor/Tax/Item inline edit forms in frontend
-4. **Deployment** — Production Docker images, env config, CI/CD
-5. **Alanube Sandbox Certification** — 2-4 weeks process with DGII
+2. **More testing** — Integration tests, PayloadTransformer unit tests
+3. **Deployment** — Systemd services, Nginx config, env config, CI/CD
+4. **Alanube Sandbox Certification** — 2-4 weeks process with DGII
