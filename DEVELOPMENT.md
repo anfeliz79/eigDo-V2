@@ -201,15 +201,24 @@ cd frontend/app && npm run dev       # port 3002
 cd frontend/admin && npm run dev     # port 3001
 ```
 
-## Tests (49 passing)
+## Tests (79 passing)
 ```bash
-cd backend && dotnet test tests/Eigdo.UnitTests/      # 10 tests (RNC validation, webhook HMAC)
-cd backend && dotnet test tests/Eigdo.FiscalTests/     # 24 tests (TaxCalculator, RetentionCalculator, DiscountDistributor)
+cd backend && dotnet test tests/Eigdo.UnitTests/      # 25 tests (RNC validation, webhook HMAC)
+cd backend && dotnet test tests/Eigdo.FiscalTests/     # 54 tests (TaxCalculator, RetentionCalculator, DiscountDistributor, PayloadTransformer)
 ```
 
+### PayloadTransformer Tests (30 tests)
+- Cycle 1 Emisor: sets RNC, razon social, encabezado fields from FiscalSettings
+- Cycle 2 Comprador: maps customer for sales e-CFs, handles missing mapping
+- Cycle 3 Proveedor: maps vendor for purchase e-CFs, applies retentions for E41
+- Cycle 4 Billing Indicator: uses TaxCodeMapping, forced overrides (E43→Special, E44→Special, E46→Itbis0, E47→Special), defaults
+- Cycle 5 Item Overrides: applies unitMeasure/goodServiceIndicator overrides, falls back to fiscal defaults
+- Tax Calculations: ITBIS 18%, mixed rates (18/16/0), subtotales correctness
+- Discounts: global discount proportional distribution
+- Line Items: numbering, quantity, descriptions, pagination
+
 ## Remaining Work (Priority Order)
-1. **PayloadTransformer tests** — Unit tests covering all 5 mapping cycles
-2. **Integration tests** — Full emission flow, QBO webhook processing
+1. **Integration tests** — Full emission flow end-to-end, QBO webhook processing
 3. **Deployment** — Systemd services, Nginx config, env config, CI/CD (Ubuntu VPS)
 4. **Alanube Sandbox Certification** — 2-4 weeks process with DGII
 5. **Production hardening** — Rate limiting, Sentry, health checks, backups
