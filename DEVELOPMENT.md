@@ -83,6 +83,9 @@ eigdo-v2/
 | ItemOverridesController | GET, POST, PUT, DELETE | Authorized |
 | QboController | GET auth-url, GET callback, GET status, POST disconnect | Mixed |
 | **QboWebhookController** | POST /api/qbo-webhook | Anonymous (HMAC) |
+| DocumentsController | GET list, GET detail, GET stats | Authorized |
+| EmissionController | POST transform-and-queue, POST preview | Authorized |
+| **AdminController** | GET stats, companies, subscriptions, audit-logs | SuperAdmin |
 
 ### Workers
 | Worker | Status | Description |
@@ -127,15 +130,16 @@ eigdo-v2/
 | Settings — Items | Done | Item override table + **inline editing** (unitMeasure, goodServiceIndicator) |
 | Settings — QBO | Done | Connect/disconnect QuickBooks, status display |
 
-### Admin (port 3001) — DONE (v1)
+### Admin (port 3001) — DONE (v2 with API)
 | Component | Status | Description |
 |-----------|--------|-------------|
+| lib/api.ts | Done | Admin API client — stats, companies, subscriptions, audit logs |
 | Login page | Done | Admin-themed login with dark sidebar branding |
 | (admin)/layout.tsx | Done | Dark sidebar nav, auth guard |
-| Dashboard | Done | System stats cards (empresas, suscripciones, e-CF, errores) |
-| Companies | Done | Company management table (RNC, plan, QBO, onboarding) |
-| Plans | Done | 3-tier plan cards (Basico/Profesional/Enterprise), subscriptions table |
-| Audit | Done | Audit log table with filters (empresa, accion, fecha) |
+| Dashboard | Done | **Live stats** from API, recent companies + recent documents |
+| Companies | Done | **Live table** with search, pagination, activate/deactivate |
+| Plans | Done | 3-tier plan cards, **live subscriber counts**, subscriptions table |
+| Audit | Done | **Live audit logs** with action/date filters, pagination |
 
 ## 5 Mapping Cycles
 1. **Emisor** (FiscalSettings): RNC, razón social, defaults (incomeType, unitMeasure, goodServiceIndicator)
@@ -204,7 +208,8 @@ cd backend && dotnet test tests/Eigdo.FiscalTests/     # 24 tests (TaxCalculator
 ```
 
 ## Remaining Work (Priority Order)
-1. **Admin API endpoints** — Company list, subscription management, audit log endpoints
-2. **More testing** — Integration tests, PayloadTransformer unit tests
-3. **Deployment** — Systemd services, Nginx config, env config, CI/CD
+1. **PayloadTransformer tests** — Unit tests covering all 5 mapping cycles
+2. **Integration tests** — Full emission flow, QBO webhook processing
+3. **Deployment** — Systemd services, Nginx config, env config, CI/CD (Ubuntu VPS)
 4. **Alanube Sandbox Certification** — 2-4 weeks process with DGII
+5. **Production hardening** — Rate limiting, Sentry, health checks, backups
