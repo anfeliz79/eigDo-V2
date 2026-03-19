@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Backend (Build + Test)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: eigdo_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore backend/Eigdo.sln
+
+      - name: Build
+        run: dotnet build backend/Eigdo.sln --no-restore -c Release
+
+      - name: Run Unit Tests
+        run: dotnet test backend/tests/Eigdo.UnitTests/ --no-build -c Release --verbosity normal
+
+      - name: Run Fiscal Tests
+        run: dotnet test backend/tests/Eigdo.FiscalTests/ --no-build -c Release --verbosity normal
+
+  frontend-landing:
+    name: Frontend Landing
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/landing/package-lock.json
+      - run: cd frontend/landing && npm ci
+      - run: cd frontend/landing && npm run build
+
+  frontend-app:
+    name: Frontend App
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/app/package-lock.json
+      - run: cd frontend/app && npm ci
+      - run: cd frontend/app && npm run build
+
+  frontend-admin:
+    name: Frontend Admin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/admin/package-lock.json
+      - run: cd frontend/admin && npm ci
+      - run: cd frontend/admin && npm run build

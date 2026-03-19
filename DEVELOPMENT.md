@@ -217,8 +217,36 @@ cd backend && dotnet test tests/Eigdo.FiscalTests/     # 54 tests (TaxCalculator
 - Discounts: global discount proportional distribution
 - Line Items: numbering, quantity, descriptions, pagination
 
+## Deployment Infrastructure
+
+### Systemd Services (5 total)
+| Service | Description | Port |
+|---------|-------------|------|
+| `eigdo-api.service` | ASP.NET Core API (Kestrel) | 5000 |
+| `eigdo-worker.service` | Background emission/polling worker | — |
+| `eigdo-landing.service` | Landing page (Next.js) | 3000 |
+| `eigdo-app.service` | Empresa app (Next.js) | 3002 |
+| `eigdo-admin.service` | Admin panel (Next.js) | 3001 |
+
+### Nginx Configs (4 vhosts)
+| Config | Domain |
+|--------|--------|
+| `eigdo-api.conf` | `api.eigdo.com` → :5000 |
+| `eigdo-landing.conf` | `eigdo.com` / `www.eigdo.com` → :3000 |
+| `eigdo-app.conf` | `app.eigdo.com` → :3002 |
+| `eigdo-admin.conf` | `admin.eigdo.com` → :3001 |
+
+### Scripts
+- `setup-server.sh` — Full Ubuntu VPS setup (dotnet, node, postgres, redis, nginx, certbot, firewall)
+- `deploy.sh` — Component-based deploy: `./deploy.sh [all|backend|frontend|landing|app|admin]`
+- `backup.sh` — Daily pg_dump cron (2 AM, 30-day retention)
+
+### CI/CD
+- GitHub Actions: `.github/workflows/ci.yml`
+  - Backend: restore, build, unit tests, fiscal tests (with Postgres + Redis services)
+  - Frontend: build landing, app, admin (parallel jobs)
+
 ## Remaining Work (Priority Order)
 1. **Integration tests** — Full emission flow end-to-end, QBO webhook processing
-3. **Deployment** — Systemd services, Nginx config, env config, CI/CD (Ubuntu VPS)
-4. **Alanube Sandbox Certification** — 2-4 weeks process with DGII
-5. **Production hardening** — Rate limiting, Sentry, health checks, backups
+2. **Alanube Sandbox Certification** — 2-4 weeks process with DGII
+3. **Production hardening** — Rate limiting, Sentry, structured logging (Serilog)
