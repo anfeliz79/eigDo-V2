@@ -126,10 +126,15 @@ eigdo-v2/
 | Settings — Items | Done | Item override table (Cycle 5) |
 | Settings — QBO | Done | Connect/disconnect QuickBooks, status display |
 
-### Admin (port 3001) — NOT STARTED
-- Company management
-- Plan/billing admin
-- Audit log viewer
+### Admin (port 3001) — DONE (v1)
+| Component | Status | Description |
+|-----------|--------|-------------|
+| Login page | Done | Admin-themed login with dark sidebar branding |
+| (admin)/layout.tsx | Done | Dark sidebar nav, auth guard |
+| Dashboard | Done | System stats cards (empresas, suscripciones, e-CF, errores) |
+| Companies | Done | Company management table (RNC, plan, QBO, onboarding) |
+| Plans | Done | 3-tier plan cards (Basico/Profesional/Enterprise), subscriptions table |
+| Audit | Done | Audit log table with filters (empresa, accion, fecha) |
 
 ## 5 Mapping Cycles
 1. **Emisor** (FiscalSettings): RNC, razón social, defaults (incomeType, unitMeasure, goodServiceIndicator)
@@ -188,9 +193,9 @@ cd frontend/admin && npm run dev     # port 3001
 ```
 
 ## Remaining Work (Priority Order)
-1. **Admin Frontend** — company management, plans, billing, audit log
-2. **Documents Controller** — GET /documents endpoint (paginated list, filters)
-3. **Emission API** — POST /emit endpoint that triggers full flow
+1. **Documents Controller** — GET /documents endpoint (paginated list, filters)
+2. **Emission API** — POST /emit endpoint that triggers full PayloadTransformer + Orchestrator flow
+3. **Admin API endpoints** — Company list, subscription management, audit log endpoints
 4. **Testing** — Unit tests for TaxCalculator, PayloadTransformer, RetentionCalculator
 5. **Docker Compose** — All services in one compose file for local dev
 6. **Deployment** — Env config, production Docker, CI/CD
