@@ -176,6 +176,10 @@ QBO Webhook → QboSyncEvent → PayloadTransformer (5 cycles)
 
 ## Docker Services
 ```bash
+# Option 1: Docker Compose (recommended)
+docker compose up -d
+
+# Option 2: Individual containers
 docker run -d --name eigdo-postgres -p 5432:5432 -e POSTGRES_PASSWORD=postgres postgres:16
 docker run -d --name eigdo-redis -p 6379:6379 redis:7
 ```
@@ -193,10 +197,8 @@ cd frontend/admin && npm run dev     # port 3001
 ```
 
 ## Remaining Work (Priority Order)
-1. **Documents Controller** — GET /documents endpoint (paginated list, filters)
-2. **Emission API** — POST /emit endpoint that triggers full PayloadTransformer + Orchestrator flow
-3. **Admin API endpoints** — Company list, subscription management, audit log endpoints
-4. **Testing** — Unit tests for TaxCalculator, PayloadTransformer, RetentionCalculator
-5. **Docker Compose** — All services in one compose file for local dev
-6. **Deployment** — Env config, production Docker, CI/CD
-7. **Alanube Sandbox Certification** — 2-4 weeks process with DGII
+1. **Admin API endpoints** — Company list, subscription management, audit log endpoints
+2. **Testing** — Unit tests for TaxCalculator, PayloadTransformer, RetentionCalculator
+3. **Form editing** — Customer/Vendor/Tax/Item inline edit forms in frontend
+4. **Deployment** — Production Docker images, env config, CI/CD
+5. **Alanube Sandbox Certification** — 2-4 weeks process with DGII
