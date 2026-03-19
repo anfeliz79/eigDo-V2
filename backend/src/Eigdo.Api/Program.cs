@@ -157,3 +157,6 @@ if (app.Environment.IsDevelopment())
 Log.Information("eigdo API starting on {Urls}", string.Join(", ", app.Urls));
 
 app.Run();
+
+// Expose Program class for WebApplicationFactory<Program> in integration tests
+public partial class Program { }

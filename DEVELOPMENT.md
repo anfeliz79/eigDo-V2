@@ -201,10 +201,11 @@ cd frontend/app && npm run dev       # port 3002
 cd frontend/admin && npm run dev     # port 3001
 ```
 
-## Tests (79 passing)
+## Tests (88 passing, 1 skipped)
 ```bash
-cd backend && dotnet test tests/Eigdo.UnitTests/      # 25 tests (RNC validation, webhook HMAC)
-cd backend && dotnet test tests/Eigdo.FiscalTests/     # 54 tests (TaxCalculator, RetentionCalculator, DiscountDistributor, PayloadTransformer)
+cd backend && dotnet test tests/Eigdo.UnitTests/          # 25 tests (RNC validation, webhook HMAC)
+cd backend && dotnet test tests/Eigdo.FiscalTests/         # 54 tests (TaxCalculator, RetentionCalculator, DiscountDistributor, PayloadTransformer)
+cd backend && dotnet test tests/Eigdo.IntegrationTests/    # 9+1 tests (Health endpoint, Auth flow, WebApplicationFactory)
 ```
 
 ### PayloadTransformer Tests (30 tests)
