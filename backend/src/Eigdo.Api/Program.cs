@@ -38,6 +38,8 @@ builder.Services.AddScoped<Eigdo.Application.Services.TaxCalculator>();
 builder.Services.AddScoped<Eigdo.Application.Services.RetentionCalculator>();
 builder.Services.AddScoped<Eigdo.Application.Services.DiscountDistributor>();
 builder.Services.AddScoped<Eigdo.Application.Services.EmissionOrchestrator>();
+builder.Services.AddScoped<Eigdo.Application.Services.PayloadTransformer>();
+builder.Services.AddScoped<Eigdo.Application.Services.QboWebhookHandler>();
 
 // Authentication
 var jwtSecret = builder.Configuration.GetValue<string>("JWT_SECRET") ?? "development_secret_key_change_in_production_64chars_minimum!!!!!!!!";
