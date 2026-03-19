@@ -47,7 +47,7 @@ function Navbar() {
             href="/registro"
             className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-dark"
           >
-            Comenzar Gratis
+            Comenzar Ahora
           </Link>
         </div>
 
@@ -85,7 +85,7 @@ function Navbar() {
               className="rounded-lg bg-primary px-5 py-2.5 text-center text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-dark"
               onClick={() => setOpen(false)}
             >
-              Comenzar Gratis
+              Comenzar Ahora
             </Link>
           </div>
         </div>
@@ -114,7 +114,7 @@ function Hero() {
             href="/registro"
             className="rounded-lg bg-primary px-8 py-3.5 text-base font-semibold text-white shadow-lg transition-all hover:bg-primary-dark hover:shadow-xl"
           >
-            Comenzar Prueba Gratis
+            Comenzar Ahora
           </Link>
           <a
             href="#como-funciona"
@@ -431,7 +431,7 @@ function FinalCTA() {
           href="/registro"
           className="mt-10 inline-block rounded-lg bg-white px-8 py-3.5 text-base font-semibold text-primary shadow-lg transition-all hover:bg-blue-50 hover:shadow-xl"
         >
-          Crear Cuenta Gratis
+          Crear Cuenta
         </Link>
       </div>
     </section>

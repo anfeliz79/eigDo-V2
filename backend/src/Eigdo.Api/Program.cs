@@ -33,6 +33,11 @@ builder.Services.AddScoped<Eigdo.Application.Services.CustomerMappingService>();
 builder.Services.AddScoped<Eigdo.Application.Services.VendorMappingService>();
 builder.Services.AddScoped<Eigdo.Application.Services.TaxMappingService>();
 builder.Services.AddScoped<Eigdo.Application.Services.ItemOverrideService>();
+builder.Services.AddScoped<Eigdo.Application.Services.EmissionValidator>();
+builder.Services.AddScoped<Eigdo.Application.Services.TaxCalculator>();
+builder.Services.AddScoped<Eigdo.Application.Services.RetentionCalculator>();
+builder.Services.AddScoped<Eigdo.Application.Services.DiscountDistributor>();
+builder.Services.AddScoped<Eigdo.Application.Services.EmissionOrchestrator>();
 
 // Authentication
 var jwtSecret = builder.Configuration.GetValue<string>("JWT_SECRET") ?? "development_secret_key_change_in_production_64chars_minimum!!!!!!!!";

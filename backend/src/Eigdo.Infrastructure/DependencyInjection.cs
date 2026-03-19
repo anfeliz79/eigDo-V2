@@ -7,6 +7,7 @@ using Eigdo.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using StackExchange.Redis;
 
 namespace Eigdo.Infrastructure;
 
@@ -42,6 +43,10 @@ public static class DependencyInjection
             options.InstanceName = "eigdo:";
         });
 
+        // Redis connection multiplexer (for distributed locking)
+        services.AddSingleton<IConnectionMultiplexer>(
+            _ => ConnectionMultiplexer.Connect(redisConnection));
+
         // Named HttpClients
         services.AddHttpClient("alanube", client =>
         {
@@ -73,9 +78,13 @@ public static class DependencyInjection
 
         // Services
         services.AddScoped<IAuditService, AuditService>();
+        services.AddScoped<ISequenceService, SequenceService>();
 
         // Fiscal provider
         services.AddScoped<IFiscalProvider, AlanubeClient>();
+
+        // QBO integration
+        services.AddScoped<IQboClient, Integration.QboApiClient>();
 
         return services;
     }
