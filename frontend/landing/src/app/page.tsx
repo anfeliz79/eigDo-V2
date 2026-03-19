@@ -3,6 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3002";
+
 /* ------------------------------------------------------------------ */
 /*  Logo — Bold unified wordmark, Stripe-inspired                     */
 /* ------------------------------------------------------------------ */
@@ -43,12 +45,12 @@ function Navbar() {
           <a href="#soporte" className="text-sm text-muted hover:text-foreground transition-colors">
             Soporte
           </a>
-          <Link
-            href="/registro"
+          <a
+            href={`${APP_URL}/login`}
             className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-dark"
           >
             Comenzar Ahora
-          </Link>
+          </a>
         </div>
 
         {/* Mobile hamburger */}
@@ -80,13 +82,13 @@ function Navbar() {
             <a href="#soporte" className="text-sm text-muted hover:text-foreground" onClick={() => setOpen(false)}>
               Soporte
             </a>
-            <Link
-              href="/registro"
+            <a
+              href={`${APP_URL}/login`}
               className="rounded-lg bg-primary px-5 py-2.5 text-center text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-dark"
               onClick={() => setOpen(false)}
             >
               Comenzar Ahora
-            </Link>
+            </a>
           </div>
         </div>
       )}
@@ -110,12 +112,12 @@ function Hero() {
           automáticamente — sin doble digitación, sin errores.
         </p>
         <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
-          <Link
-            href="/registro"
+          <a
+            href={`${APP_URL}/login`}
             className="rounded-lg bg-primary px-8 py-3.5 text-base font-semibold text-white shadow-lg transition-all hover:bg-primary-dark hover:shadow-xl"
           >
             Comenzar Ahora
-          </Link>
+          </a>
           <a
             href="#como-funciona"
             className="rounded-lg border border-gray-300 bg-white px-8 py-3.5 text-base font-semibold text-foreground shadow-sm transition-colors hover:bg-gray-50"
@@ -395,8 +397,8 @@ function Pricing() {
                   </li>
                 ))}
               </ul>
-              <Link
-                href="/registro"
+              <a
+                href={`${APP_URL}/login`}
                 className={`mt-8 block rounded-lg py-3 text-center text-sm font-semibold transition-colors ${
                   plan.popular
                     ? "bg-primary text-white shadow-sm hover:bg-primary-dark"
@@ -404,7 +406,7 @@ function Pricing() {
                 }`}
               >
                 Comenzar
-              </Link>
+              </a>
             </div>
           ))}
         </div>
@@ -427,12 +429,12 @@ function FinalCTA() {
           Fase 3 de facturación electrónica es obligatoria para PyMEs.
           Prepárate hoy.
         </p>
-        <Link
-          href="/registro"
+        <a
+          href={`${APP_URL}/login`}
           className="mt-10 inline-block rounded-lg bg-white px-8 py-3.5 text-base font-semibold text-primary shadow-lg transition-all hover:bg-blue-50 hover:shadow-xl"
         >
           Crear Cuenta
-        </Link>
+        </a>
       </div>
     </section>
   );
