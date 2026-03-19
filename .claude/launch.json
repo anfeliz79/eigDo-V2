@@ -1,0 +1,35 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "eigdo-api",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "backend/src/Eigdo.Api/Eigdo.Api.csproj"],
+      "port": 5102
+    },
+    {
+      "name": "eigdo-worker",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "backend/src/Eigdo.Worker/Eigdo.Worker.csproj"],
+      "port": 0
+    },
+    {
+      "name": "eigdo-landing",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "frontend/landing"],
+      "port": 3000
+    },
+    {
+      "name": "eigdo-admin",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "frontend/admin"],
+      "port": 3001
+    },
+    {
+      "name": "eigdo-app",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "frontend/app"],
+      "port": 3002
+    }
+  ]
+}

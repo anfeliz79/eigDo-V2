@@ -1,0 +1,17 @@
+[Unit]
+Description=eigdo Background Worker
+After=network.target postgresql.service redis-server.service
+
+[Service]
+WorkingDirectory=/opt/eigdo/worker
+ExecStart=/usr/bin/dotnet Eigdo.Worker.dll
+Restart=always
+RestartSec=10
+KillSignal=SIGINT
+SyslogIdentifier=eigdo-worker
+User=eigdo
+Group=eigdo
+EnvironmentFile=/opt/eigdo/config/.env
+
+[Install]
+WantedBy=multi-user.target
