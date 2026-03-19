@@ -23,6 +23,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Eigdo.Application\Eigdo.Application.csproj" />
     <ProjectReference Include="..\..\src\Eigdo.Domain\Eigdo.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Eigdo.SharedKernel\Eigdo.SharedKernel.csproj" />
   </ItemGroup>
 
 </Project>
