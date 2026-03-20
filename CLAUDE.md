@@ -5,6 +5,23 @@ SaaS that connects QuickBooks Online (QBO) with Dominican Republic's mandatory e
 
 **Deadline**: Mayo 15, 2026 (Fase 3 DGII obligatoria para PyMEs)
 
+**Repo**: https://github.com/anfeliz79/eigDo-V2.git
+
+---
+
+## Git Branching Strategy
+
+| Branch | Purpose | Deploys to |
+|--------|---------|-----------|
+| `main` | Production stable | `eigdo.com` |
+| `develop` | Staging / active work | `staging.eigdo.com` |
+
+### ⚠️ CRITICAL RULE: NEVER merge develop → main without explicit user approval
+- All daily work happens on `develop`
+- `main` is ONLY updated when the user explicitly says to merge/release
+- Feature branches (optional) branch from and merge back to `develop`
+- Hotfixes: branch from `main`, merge to both `main` and `develop`
+
 ---
 
 ## Business Rules
