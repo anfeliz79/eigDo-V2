@@ -141,27 +141,35 @@ public class QboApiClient : IQboClient
     {
         try
         {
-            var entityName = typeof(T).Name.ToLower();
+            var typeName = typeof(T).Name;
+            var entityName = typeName.ToLower();
             var url = $"{ApiBaseUrl}/v3/company/{realmId}/{entityName}/{entityId}?minorversion=73";
+
+            _logger.LogInformation("QBO GetEntity: GET {Url}", url);
 
             var client = CreateAuthenticatedClient(accessToken);
             var response = await client.GetAsync(url, ct);
+            var body = await response.Content.ReadAsStringAsync(ct);
+
+            _logger.LogInformation("QBO GetEntity: HTTP {StatusCode}, body length={Length}, body prefix={Prefix}",
+                (int)response.StatusCode, body.Length, body.Length > 200 ? body[..200] : body);
 
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogWarning("QBO GET {Entity}/{Id} failed: HTTP {StatusCode}", entityName, entityId, (int)response.StatusCode);
+                _logger.LogWarning("QBO GET {Entity}/{Id} failed: HTTP {StatusCode} — {Body}", entityName, entityId, (int)response.StatusCode, body);
                 return null;
             }
 
-            var body = await response.Content.ReadAsStringAsync(ct);
             using var doc = JsonDocument.Parse(body);
 
             // QBO wraps responses: { "EntityName": { ... } }
-            var entityPascal = char.ToUpper(entityName[0]) + entityName[1..];
-            if (doc.RootElement.TryGetProperty(entityPascal, out var entityElement))
+            if (doc.RootElement.TryGetProperty(typeName, out var entityElement))
             {
                 return JsonSerializer.Deserialize<T>(entityElement.GetRawText(), JsonOptions);
             }
+
+            _logger.LogWarning("QBO GetEntity: property '{TypeName}' not found in response. Available: {Props}",
+                typeName, string.Join(", ", doc.RootElement.EnumerateObject().Select(p => p.Name)));
 
             return null;
         }

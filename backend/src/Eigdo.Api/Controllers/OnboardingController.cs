@@ -23,7 +23,7 @@ public class OnboardingController : EigdoControllerBase
     {
         var companyId = GetCompanyId();
         if (companyId is null)
-            return Unauthorized(ApiResponse<object>.Fail("Company claim not found in token."));
+            return Unauthorized(ApiResponse<object>.Fail("Empresa no identificada."));
 
         var (result, error) = await _onboardingService.GetOnboardingStatusAsync(companyId.Value, ct);
 
@@ -38,7 +38,7 @@ public class OnboardingController : EigdoControllerBase
     {
         var companyId = GetCompanyId();
         if (companyId is null)
-            return Unauthorized(ApiResponse<object>.Fail("Company claim not found in token."));
+            return Unauthorized(ApiResponse<object>.Fail("Empresa no identificada."));
 
         var (result, error) = await _onboardingService.AdvanceStepAsync(companyId.Value, request, ct);
 
@@ -53,7 +53,7 @@ public class OnboardingController : EigdoControllerBase
     {
         var companyId = GetCompanyId();
         if (companyId is null)
-            return Unauthorized(ApiResponse<object>.Fail("Company claim not found in token."));
+            return Unauthorized(ApiResponse<object>.Fail("Empresa no identificada."));
 
         var (result, error) = await _onboardingService.CompleteOnboardingAsync(companyId.Value, ct);
 

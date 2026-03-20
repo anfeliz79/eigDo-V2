@@ -187,6 +187,12 @@ public class AuthService
             new("lastName", user.LastName)
         };
 
+        // Add system role claim (e.g., SuperAdmin)
+        if (!string.IsNullOrEmpty(user.SystemRole))
+        {
+            claims.Add(new Claim(ClaimTypes.Role, user.SystemRole));
+        }
+
         foreach (var cu in user.CompanyUsers)
         {
             claims.Add(new Claim("company", $"{cu.CompanyId}:{cu.Role}"));

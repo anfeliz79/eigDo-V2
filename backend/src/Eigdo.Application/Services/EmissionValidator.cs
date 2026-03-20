@@ -1,9 +1,14 @@
+using Eigdo.Application.DTOs.Emission;
 using Eigdo.Application.Interfaces;
 using Eigdo.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 
 namespace Eigdo.Application.Services;
 
+/// <summary>
+/// Validates ALL preconditions before e-CF emission.
+/// Returns a list of blocking error messages (in Spanish for end users).
+/// </summary>
 public class EmissionValidator
 {
     private readonly IEigdoDbContext _db;
@@ -13,135 +18,181 @@ public class EmissionValidator
         _db = db;
     }
 
-    public async Task<(bool IsValid, List<string> Errors)> ValidateAsync(
-        Guid companyId, EcfType ecfType, string qboSourceId, CancellationToken ct)
+    /// <summary>
+    /// Full validation against the EmissionContext.
+    /// Returns an empty list when all checks pass.
+    /// </summary>
+    public async Task<List<string>> ValidateAsync(EmissionContext context, CancellationToken ct = default)
     {
         var errors = new List<string>();
 
-        // 1. Company exists
+        // ── 1. Company exists ──────────────────────────────────────────
         var companyExists = await _db.Companies
-            .AnyAsync(c => c.Id == companyId, ct);
+            .AnyAsync(c => c.Id == context.CompanyId, ct);
 
         if (!companyExists)
         {
-            errors.Add("Company not found.");
-            return (false, errors);
+            errors.Add("Empresa no encontrada.");
+            return errors;
         }
 
-        // 2. Onboarding complete — FiscalSettings exists with RNC set
-        var fiscalSettings = await _db.FiscalSettings
-            .FirstOrDefaultAsync(fs => fs.CompanyId == companyId, ct);
+        // ── 2. Fiscal settings / onboarding complete ───────────────────
+        var fiscal = await _db.FiscalSettings
+            .FirstOrDefaultAsync(fs => fs.CompanyId == context.CompanyId, ct);
 
-        if (fiscalSettings is null)
+        if (fiscal is null)
         {
-            errors.Add("Fiscal settings not configured. Complete onboarding first.");
-            return (false, errors);
+            errors.Add("Datos fiscales no configurados. Completa el onboarding primero.");
+            return errors;
         }
 
-        if (string.IsNullOrWhiteSpace(fiscalSettings.Rnc))
+        if (string.IsNullOrWhiteSpace(fiscal.Rnc))
+            errors.Add("RNC no configurado en los datos fiscales.");
+
+        if (!fiscal.CertificateConfigured)
+            errors.Add("Certificado digital no configurado.");
+
+        var isSandbox = string.Equals(fiscal.AlanubeEnvironment, "sandbox", StringComparison.OrdinalIgnoreCase);
+
+        // ── 3. Subscription check (skip in sandbox) ────────────────────
+        if (!isSandbox)
         {
-            errors.Add("RNC not configured in fiscal settings.");
+            var subscription = await _db.BillingAccounts
+                .Where(ba => ba.CompanyId == context.CompanyId)
+                .SelectMany(ba => ba.Subscriptions)
+                .Where(s => s.Status == SubscriptionStatus.Active || s.Status == SubscriptionStatus.Trial)
+                .Include(s => s.Plan)
+                .FirstOrDefaultAsync(ct);
+
+            if (subscription is null)
+            {
+                errors.Add("No tienes una suscripcion activa. Activa un plan para emitir comprobantes.");
+            }
+            else
+            {
+                // ── 8. Monthly document limit ──────────────────────────
+                var monthlyLimit = subscription.Plan.IncludedDocumentsPerMonth;
+                if (monthlyLimit > 0 && subscription.DocumentsEmittedThisPeriod >= monthlyLimit)
+                {
+                    errors.Add($"Has alcanzado el limite mensual de {monthlyLimit} documentos para tu plan.");
+                }
+            }
         }
 
-        // 3. Certificate uploaded
-        if (!fiscalSettings.CertificateConfigured)
-        {
-            errors.Add("Digital certificate not configured.");
-        }
-
-        // 4. Sales e-CF: customer mapping
-        if (IsSalesEcf(ecfType))
+        // ── 4. Customer/Vendor mapping ─────────────────────────────────
+        if (IsSalesEcf(context.EcfType))
         {
             var customer = await _db.CustomerMappings
-                .FirstOrDefaultAsync(cm => cm.CompanyId == companyId && cm.QboCustomerId == qboSourceId, ct);
+                .FirstOrDefaultAsync(cm => cm.CompanyId == context.CompanyId
+                    && cm.QboCustomerId == context.QboSourceId, ct);
 
             if (customer is null)
             {
-                errors.Add("Customer mapping not found for this QBO customer.");
+                errors.Add("Mapeo de cliente no encontrado para este cliente QBO.");
             }
             else
             {
                 if (customer.Excluido)
-                {
-                    errors.Add("Customer is excluded from e-CF emission.");
-                }
+                    errors.Add("El cliente esta excluido de la emision de e-CF.");
 
-                if (string.IsNullOrWhiteSpace(customer.Rnc))
-                {
-                    errors.Add("Customer RNC not configured.");
-                }
+                // E32 (consumer) allows anonymous buyers — no RNC required
+                if (string.IsNullOrWhiteSpace(customer.Rnc) && context.EcfType != EcfType.E32)
+                    errors.Add("RNC del cliente no configurado.");
             }
         }
 
-        // 5. Purchase e-CF: vendor mapping
-        if (IsPurchaseEcf(ecfType))
+        if (IsPurchaseEcf(context.EcfType))
         {
             var vendor = await _db.VendorMappings
-                .FirstOrDefaultAsync(vm => vm.CompanyId == companyId && vm.QboVendorId == qboSourceId, ct);
+                .FirstOrDefaultAsync(vm => vm.CompanyId == context.CompanyId
+                    && vm.QboVendorId == context.QboSourceId, ct);
 
             if (vendor is null)
             {
-                errors.Add("Vendor mapping not found for this QBO vendor.");
+                errors.Add("Mapeo de proveedor no encontrado para este proveedor QBO.");
             }
             else
             {
                 if (vendor.Excluido)
-                {
-                    errors.Add("Vendor is excluded from e-CF emission.");
-                }
+                    errors.Add("El proveedor esta excluido de la emision de e-CF.");
 
                 if (string.IsNullOrWhiteSpace(vendor.Rnc))
-                {
-                    errors.Add("Vendor RNC not configured.");
-                }
+                    errors.Add("RNC del proveedor no configurado.");
 
                 // E41 with services requires retention rates
-                if (ecfType == EcfType.E41)
+                if (context.EcfType == EcfType.E41 && context.HasServiceItems)
                 {
                     if (vendor.RetentionItbisRate is null)
-                    {
-                        errors.Add("Vendor ITBIS retention rate not configured (required for E41).");
-                    }
-
+                        errors.Add("Tasa de retencion ITBIS del proveedor no configurada (requerida para E41).");
                     if (vendor.RetentionIsrRate is null)
-                    {
-                        errors.Add("Vendor ISR retention rate not configured (required for E41).");
-                    }
+                        errors.Add("Tasa de retencion ISR del proveedor no configurada (requerida para E41).");
                 }
             }
         }
 
-        // 6. At least one TaxCodeMapping exists
-        var hasTaxMappings = await _db.TaxCodeMappings
-            .AnyAsync(tc => tc.CompanyId == companyId, ct);
-
-        if (!hasTaxMappings)
+        // ── 5. All referenced tax codes are mapped ─────────────────────
+        if (context.QboTaxCodeIds.Count > 0)
         {
-            errors.Add("No tax code mappings configured.");
+            var mappedTaxCodes = await _db.TaxCodeMappings
+                .Where(tc => tc.CompanyId == context.CompanyId
+                    && context.QboTaxCodeIds.Contains(tc.QboTaxCodeId))
+                .Select(tc => tc.QboTaxCodeId)
+                .ToListAsync(ct);
+
+            var unmapped = context.QboTaxCodeIds
+                .Except(mappedTaxCodes)
+                .ToList();
+
+            foreach (var code in unmapped)
+            {
+                errors.Add($"El codigo de impuesto QBO '{code}' no tiene un mapeo configurado.");
+            }
+        }
+        else
+        {
+            // At minimum, some tax mappings should exist
+            var hasTaxMappings = await _db.TaxCodeMappings
+                .AnyAsync(tc => tc.CompanyId == context.CompanyId, ct);
+
+            if (!hasTaxMappings)
+                errors.Add("No hay mapeos de codigos de impuestos configurados.");
         }
 
-        // 7. Sequence available for ecfType (active, not expired, not exhausted)
+        // ── 6. Sequence available ──────────────────────────────────────
         var hasSequence = await _db.Sequences
-            .AnyAsync(s => s.FiscalSettings.CompanyId == companyId
-                           && s.EcfType == ecfType
-                           && s.IsActive
-                           && s.DueDateUtc > DateTime.UtcNow
-                           && s.CurrentValue < s.RangeEnd, ct);
+            .AnyAsync(s => s.FiscalSettings.CompanyId == context.CompanyId
+                && s.EcfType == context.EcfType
+                && s.IsActive
+                && s.DueDateUtc > DateTime.UtcNow
+                && s.CurrentValue < s.RangeEnd, ct);
 
         if (!hasSequence)
-        {
-            errors.Add($"No available sequence for {ecfType}. Check that a sequence is active, not expired, and not exhausted.");
-        }
+            errors.Add($"No hay secuencia disponible para {context.EcfType}. Verifica que una secuencia este activa, no expirada y no agotada.");
 
-        // 8. Payment method mappings exist
+        // ── 7. Payment method mappings ─────────────────────────────────
         var hasPaymentMappings = await _db.PaymentMethodMappings
-            .AnyAsync(pm => pm.FiscalSettings.CompanyId == companyId, ct);
+            .AnyAsync(pm => pm.FiscalSettings.CompanyId == context.CompanyId, ct);
 
         if (!hasPaymentMappings)
-        {
-            errors.Add("No payment method mappings configured.");
-        }
+            errors.Add("No hay mapeos de metodos de pago configurados.");
 
+        return errors;
+    }
+
+    /// <summary>
+    /// Simplified validation overload used by EmissionOrchestrator (backward compat).
+    /// </summary>
+    public async Task<(bool IsValid, List<string> Errors)> ValidateAsync(
+        Guid companyId, EcfType ecfType, string qboSourceId, CancellationToken ct)
+    {
+        var context = new EmissionContext
+        {
+            CompanyId = companyId,
+            EcfType = ecfType,
+            QboSourceId = qboSourceId
+        };
+
+        var errors = await ValidateAsync(context, ct);
         return (errors.Count == 0, errors);
     }
 

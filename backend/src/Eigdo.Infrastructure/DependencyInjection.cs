@@ -3,6 +3,7 @@ using Eigdo.Domain.Interfaces;
 using Eigdo.Infrastructure.Fiscal;
 using Eigdo.Infrastructure.Persistence;
 using Eigdo.Infrastructure.Security;
+using Eigdo.Infrastructure.Integration;
 using Eigdo.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -85,6 +86,9 @@ public static class DependencyInjection
 
         // QBO integration
         services.AddScoped<IQboClient, Integration.QboApiClient>();
+
+        // DGII RNC lookup
+        services.AddScoped<IDgiiRncService, DgiiRncService>();
 
         return services;
     }

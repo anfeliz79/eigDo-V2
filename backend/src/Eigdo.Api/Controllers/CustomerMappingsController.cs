@@ -23,7 +23,7 @@ public class CustomerMappingsController : EigdoControllerBase
     {
         var companyId = GetCompanyId();
         if (companyId is null)
-            return Unauthorized(ApiResponse<object>.Fail("Company claim not found in token."));
+            return Unauthorized(ApiResponse<object>.Fail("Empresa no identificada."));
 
         var (result, error) = await _customerMappingService.GetAllAsync(companyId.Value, ct);
 
@@ -38,7 +38,7 @@ public class CustomerMappingsController : EigdoControllerBase
     {
         var companyId = GetCompanyId();
         if (companyId is null)
-            return Unauthorized(ApiResponse<object>.Fail("Company claim not found in token."));
+            return Unauthorized(ApiResponse<object>.Fail("Empresa no identificada."));
 
         var (result, error) = await _customerMappingService.GetByIdAsync(companyId.Value, id, ct);
 
@@ -53,7 +53,7 @@ public class CustomerMappingsController : EigdoControllerBase
     {
         var companyId = GetCompanyId();
         if (companyId is null)
-            return Unauthorized(ApiResponse<object>.Fail("Company claim not found in token."));
+            return Unauthorized(ApiResponse<object>.Fail("Empresa no identificada."));
 
         var (result, error) = await _customerMappingService.CreateAsync(companyId.Value, request, ct);
 
@@ -68,7 +68,7 @@ public class CustomerMappingsController : EigdoControllerBase
     {
         var companyId = GetCompanyId();
         if (companyId is null)
-            return Unauthorized(ApiResponse<object>.Fail("Company claim not found in token."));
+            return Unauthorized(ApiResponse<object>.Fail("Empresa no identificada."));
 
         var (result, error) = await _customerMappingService.UpdateAsync(companyId.Value, id, request, ct);
 
@@ -83,7 +83,7 @@ public class CustomerMappingsController : EigdoControllerBase
     {
         var companyId = GetCompanyId();
         if (companyId is null)
-            return Unauthorized(ApiResponse<object>.Fail("Company claim not found in token."));
+            return Unauthorized(ApiResponse<object>.Fail("Empresa no identificada."));
 
         var error = await _customerMappingService.DeleteAsync(companyId.Value, id, ct);
 
@@ -98,7 +98,7 @@ public class CustomerMappingsController : EigdoControllerBase
     {
         var companyId = GetCompanyId();
         if (companyId is null)
-            return Unauthorized(ApiResponse<object>.Fail("Company claim not found in token."));
+            return Unauthorized(ApiResponse<object>.Fail("Empresa no identificada."));
 
         var (result, error) = await _customerMappingService.GetUnmappedCountAsync(companyId.Value, ct);
 

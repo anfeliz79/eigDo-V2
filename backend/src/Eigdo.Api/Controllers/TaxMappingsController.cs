@@ -23,7 +23,7 @@ public class TaxMappingsController : EigdoControllerBase
     {
         var companyId = GetCompanyId();
         if (companyId is null)
-            return Unauthorized(ApiResponse<object>.Fail("Company claim not found in token."));
+            return Unauthorized(ApiResponse<object>.Fail("Empresa no identificada."));
 
         var (result, error) = await _taxMappingService.GetAllAsync(companyId.Value, ct);
 
@@ -38,7 +38,7 @@ public class TaxMappingsController : EigdoControllerBase
     {
         var companyId = GetCompanyId();
         if (companyId is null)
-            return Unauthorized(ApiResponse<object>.Fail("Company claim not found in token."));
+            return Unauthorized(ApiResponse<object>.Fail("Empresa no identificada."));
 
         var (result, error) = await _taxMappingService.CreateOrUpdateAsync(companyId.Value, request, ct);
 
@@ -53,7 +53,7 @@ public class TaxMappingsController : EigdoControllerBase
     {
         var companyId = GetCompanyId();
         if (companyId is null)
-            return Unauthorized(ApiResponse<object>.Fail("Company claim not found in token."));
+            return Unauthorized(ApiResponse<object>.Fail("Empresa no identificada."));
 
         var error = await _taxMappingService.DeleteAsync(companyId.Value, id, ct);
 

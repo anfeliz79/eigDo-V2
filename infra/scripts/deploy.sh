@@ -74,6 +74,13 @@ deploy_frontend() {
 
     echo "--- Building Frontend: $NAME (port $PORT) ---"
     cd "$SRC"
+
+    # Copy production env if it exists on the server (NEXT_PUBLIC_* vars must be present at build time)
+    if [ -f "/opt/eigdo/config/.env.$NAME" ]; then
+        echo "Copying .env.$NAME for build-time NEXT_PUBLIC_* variables..."
+        cp "/opt/eigdo/config/.env.$NAME" "$SRC/.env.production.local"
+    fi
+
     npm ci --production=false
     npm run build
 

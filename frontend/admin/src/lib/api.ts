@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5102/api';
 
 class AdminApiClient {
   private baseUrl: string;
@@ -35,16 +35,33 @@ class AdminApiClient {
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
+      if (body.error) throw new Error(body.error);
       throw new Error(body.message || `HTTP ${res.status}`);
     }
 
     if (res.status === 204) return {} as T;
-    return res.json();
+
+    const body = await res.json();
+
+    // Unwrap ApiResponse<T> wrapper if present
+    if (body && typeof body === 'object' && 'success' in body && 'data' in body) {
+      if (!body.success) {
+        throw new Error(body.error || 'Request failed');
+      }
+      return body.data as T;
+    }
+
+    return body as T;
   }
 
   // Auth
   async login(email: string, password: string) {
-    return this.request<{ token: string; user: { id: string; email: string; fullName: string } }>('/auth/login', {
+    return this.request<{
+      accessToken: string;
+      refreshToken: string;
+      expiresAt: string;
+      user: { id: string; email: string; firstName: string; lastName: string; companies: { companyId: string; companyName: string; role: string }[] };
+    }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
@@ -78,9 +95,97 @@ class AdminApiClient {
     return this.request<{ id: string; isActive: boolean }>(`/admin/companies/${id}/toggle-active`, { method: 'POST' });
   }
 
+  // Plans CRUD
+  async getPlans() {
+    return this.request<AdminPlan[]>('/admin/plans');
+  }
+
+  async createPlan(data: CreatePlanData) {
+    return this.request<{ id: string }>('/admin/plans', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updatePlan(id: string, data: UpdatePlanData) {
+    return this.request<{ id: string }>(`/admin/plans/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deletePlan(id: string) {
+    return this.request<{ message: string }>(`/admin/plans/${id}`, { method: 'DELETE' });
+  }
+
+  // Prices CRUD
+  async createPrice(planId: string, data: CreatePriceData) {
+    return this.request<{ id: string }>(`/admin/plans/${planId}/prices`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updatePrice(id: string, data: UpdatePriceData) {
+    return this.request<{ id: string }>(`/admin/prices/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deletePrice(id: string) {
+    return this.request<{ message: string }>(`/admin/prices/${id}`, { method: 'DELETE' });
+  }
+
   // Subscriptions
   async getSubscriptions(page = 1, pageSize = 50) {
     return this.request<PaginatedResult<AdminSubscription>>(`/admin/subscriptions?page=${page}&pageSize=${pageSize}`);
+  }
+
+  // Support Tickets
+  async getTickets(params: TicketParams = {}) {
+    const qs = new URLSearchParams();
+    if (params.page) qs.set('page', String(params.page));
+    if (params.pageSize) qs.set('pageSize', String(params.pageSize));
+    if (params.status) qs.set('status', params.status);
+    if (params.priority) qs.set('priority', params.priority);
+    if (params.companyId) qs.set('companyId', params.companyId);
+    return this.request<PaginatedResult<AdminTicket>>(`/admin/tickets?${qs}`);
+  }
+
+  async getTicketDetail(id: string) {
+    return this.request<TicketDetail>(`/admin/tickets/${id}`);
+  }
+
+  async replyToTicket(id: string, message: string) {
+    return this.request<{ messageId: string }>(`/admin/tickets/${id}/reply`, {
+      method: 'POST',
+      body: JSON.stringify({ message }),
+    });
+  }
+
+  async updateTicketStatus(id: string, status: string, priority?: string) {
+    return this.request<{ id: string; status: string; priority: string }>(`/admin/tickets/${id}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status, priority }),
+    });
+  }
+
+  // Alanube Config
+  async getAlanubeConfig(companyId: string) {
+    return this.request<AlanubeConfig>(`/admin/companies/${companyId}/alanube-config`);
+  }
+
+  async updateAlanubeConfig(companyId: string, data: { apiKey?: string; environment?: string }) {
+    return this.request<{ message: string }>(`/admin/companies/${companyId}/alanube-config`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Payment Gateways
+  async getPaymentGateways() {
+    return this.request<{ gateways: PaymentGateway[] }>('/admin/payment-gateways');
   }
 
   // Audit logs
@@ -104,6 +209,9 @@ export interface AdminStats {
   ecfToday: number;
   ecfErrors: number;
   ecfTotal: number;
+  openTickets: number;
+  totalUsers: number;
+  monthlyRevenue: number;
 }
 
 export interface RecentCompany {
@@ -147,6 +255,50 @@ export interface CompanyDetail extends AdminCompany {
   fiscalRazonSocial?: string;
 }
 
+export interface AdminPlan {
+  id: string;
+  name: string;
+  description?: string;
+  maxCompanies: number;
+  includedDocumentsPerMonth: number;
+  isActive: boolean;
+  sortOrder: number;
+  createdAtUtc: string;
+  prices: AdminPrice[];
+  subscriberCount: number;
+}
+
+export interface AdminPrice {
+  id: string;
+  amount: number;
+  currency: string;
+  interval: string;
+  isActive: boolean;
+  stripeId?: string;
+}
+
+export interface CreatePlanData {
+  name: string;
+  description?: string;
+  maxCompanies: number;
+  includedDocumentsPerMonth: number;
+  sortOrder: number;
+}
+
+export interface UpdatePlanData extends CreatePlanData {
+  isActive: boolean;
+}
+
+export interface CreatePriceData {
+  amount: number;
+  currency?: string;
+  interval: string;
+}
+
+export interface UpdatePriceData extends CreatePriceData {
+  isActive: boolean;
+}
+
 export interface AdminSubscription {
   id: string;
   companyName: string;
@@ -160,6 +312,74 @@ export interface AdminSubscription {
   documentsEmittedThisPeriod: number;
   includedDocumentsPerMonth: number;
   gateway: string;
+}
+
+export interface AdminTicket {
+  id: string;
+  subject: string;
+  status: string;
+  priority: string;
+  contactEmail?: string;
+  contactName?: string;
+  companyId?: string;
+  userId?: string;
+  companyName?: string;
+  userEmail?: string;
+  createdAtUtc: string;
+  updatedAtUtc?: string;
+  messageCount: number;
+}
+
+export interface TicketMessage {
+  id: string;
+  message: string;
+  isStaffReply: boolean;
+  senderName?: string;
+  senderEmail?: string;
+  userId?: string;
+  createdAtUtc: string;
+}
+
+export interface TicketDetail {
+  id: string;
+  subject: string;
+  description: string;
+  status: string;
+  priority: string;
+  contactEmail?: string;
+  contactName?: string;
+  companyId?: string;
+  companyName?: string;
+  userId?: string;
+  userEmail?: string;
+  userName?: string;
+  createdAtUtc: string;
+  updatedAtUtc?: string;
+  messages: TicketMessage[];
+}
+
+export interface TicketParams {
+  page?: number;
+  pageSize?: number;
+  status?: string;
+  priority?: string;
+  companyId?: string;
+}
+
+export interface AlanubeConfig {
+  configured: boolean;
+  environment: string;
+  apiKey?: string;
+  companyId?: string;
+}
+
+export interface PaymentGateway {
+  name: string;
+  configured: boolean;
+  webhookConfigured: boolean;
+  status: string;
+  totalPayments: number;
+  description: string;
 }
 
 export interface AuditLogEntry {

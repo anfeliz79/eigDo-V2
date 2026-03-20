@@ -27,7 +27,23 @@ eigdo-v2/
 - **NO free trials** — purchase only model
 - **Logo**: Bold wordmark "eigDo" — "eig" dark + "Do" blue (#2563EB)
 - **Currency**: RD$ (Dominican Republic peso)
-- **Language**: Spanish (UI and fiscal terms)
+- **Language**: Spanish (UI and fiscal terms, ALL error messages in Spanish)
+
+## Onboarding Flow (8 pasos secuenciales, estricto)
+1. **QboConnection** — Conectar QuickBooks Online (primero para importar datos empresa)
+2. **CompanyData** — Datos fiscales del emisor (pre-cargados desde QBO)
+3. **CustomerMapping** — Mapeo clientes QBO → datos DGII
+4. **VendorMapping** — Mapeo proveedores QBO → datos DGII
+5. **TaxMapping** — Mapeo impuestos QBO → billingIndicator
+6. **ItemOverrides** — Overrides por item (opcional)
+7. **CertificateUpload** — Certificado digital de firma
+8. **SequenceSetup** — Secuencias e-NCF
+
+**Reglas de gating:**
+- No se puede avanzar sin completar el paso anterior
+- QBO va primero para traer datos de empresa, clientes y proveedores
+- La conexión QBO valida el límite `MaxCompanies` de la suscripción
+- Pasos bloqueados muestran icono de candado en el frontend
 
 ## Backend — Completed Components
 
@@ -53,13 +69,16 @@ eigdo-v2/
 | EmissionOrchestrator | Done | Validate → assign e-NCF → queue EcfDocument |
 | **PayloadTransformer** | Done | 5-cycle QBO→Alanube transformation |
 | **QboWebhookHandler** | Done | HMAC-SHA256 verification + entity processing |
+| **CheckoutService** | Done | Stripe Checkout Sessions, webhook handling, billing portal |
+| **SubscriptionService** | Done | Active subscription queries, emission limits, payment history |
 
 ### Application Layer (DTOs)
-- Auth: LoginRequest, RegisterRequest, AuthResponse
+- Auth: LoginRequest, RegisterRequest, AuthResponse, UserDto, CompanyUserDto
 - Onboarding: OnboardingStatusDto, AdvanceStepRequest
 - Fiscal: FiscalSettingsDto, PaymentMethodMappingDto, PaymentConditionMappingDto
 - Mapping: CustomerMappingDto, VendorMappingDto, TaxCodeMappingDto, ItemOverrideDto
 - Emission: EmissionRequestDto, EmissionResultDto, **AlanubePayload** (full DGII e-CF structure)
+- **Billing**: PlanDto, PriceDto, CreateCheckoutRequest, CheckoutSessionDto, SubscriptionDto, BillingPortalDto, PaymentHistoryDto
 
 ### Infrastructure Layer
 | Component | Status | Description |
@@ -68,6 +87,7 @@ eigdo-v2/
 | AlanubeClient | Done | IFiscalProvider — submit, status polling, annulment |
 | QboApiClient | Done | IQboClient — OAuth 2.0 flow, token refresh, entity queries |
 | SequenceService | Done | ISequenceService — Redis distributed locks for e-NCF |
+| **DataSeeder** | Done | Seeds 3 plans with 6 prices (monthly + yearly) on startup |
 | DependencyInjection | Done | All services registered (IEigdoDbContext, Redis, HttpClients) |
 
 ### API Layer (Controllers)
@@ -86,6 +106,7 @@ eigdo-v2/
 | DocumentsController | GET list, GET detail, GET stats | Authorized |
 | EmissionController | POST transform-and-queue, POST preview | Authorized |
 | **AdminController** | GET stats, companies, subscriptions, audit-logs | SuperAdmin |
+| **BillingController** | GET plans, POST checkout, GET subscription, GET can-emit, GET payments, POST portal, POST stripe-webhook | Mixed |
 
 ### Workers
 | Worker | Status | Description |
@@ -104,11 +125,11 @@ eigdo-v2/
 - Full conversion-focused landing page
 - Navbar, Hero, Problems/Solution, How It Works
 - Two profile cards (Empresas/Firmas Contables)
-- Pricing section (3 tiers in RD$)
+- Pricing section: 3 planes con precios reales (Basico RD$1,500, Profesional RD$3,500, Empresarial RD$7,500)
 - Final CTA, Footer
 - Logo: bold Inter wordmark "eigDo" with dark/blue split
-- All CTAs: "Comenzar Ahora" / "Crear Cuenta" (no "Gratis")
-- **CTAs navigate to app empresa** via `NEXT_PUBLIC_APP_URL` (default `http://localhost:3002/login`)
+- **CTAs "Adquirir Plan"** navegan a `/register?plan=X&priceId=Y` (registro + checkout unificado)
+- Hero/FinalCTA navegan al plan Profesional por defecto
 
 ### App Empresa (port 3002) — DONE (v1)
 | Component | Status | Description |
@@ -119,7 +140,8 @@ eigdo-v2/
 | components/Sidebar.tsx | Done | Nav sidebar with 8 routes, user info, logout |
 | Root layout | Done | Inter font, Spanish lang, eigdo metadata |
 | (authenticated)/layout.tsx | Done | Auth guard + Sidebar layout wrapper |
-| Login page | Done | Login/register toggle, brand panel, error handling |
+| Register page | Done | **Unified register+checkout**: plan summary + form + auto Stripe redirect |
+| Login page | Done | Dedicated login (email+password only), link to /register |
 | Dashboard | Done | Greeting, onboarding banner, stats cards, quick actions, recent docs |
 | Onboarding wizard | Done | 7-step progress tracker with step navigation |
 | Documents list | Done | Paginated table with status badges, e-NCF, amounts |
@@ -129,6 +151,9 @@ eigdo-v2/
 | Settings — Taxes | Done | Tax code mapping + **inline editing** (billingIndicator select) |
 | Settings — Items | Done | Item override table + **inline editing** (unitMeasure, goodServiceIndicator) |
 | Settings — QBO | Done | Connect/disconnect QuickBooks, status display |
+| Settings — Billing | Done | Plan selection, Stripe checkout, subscription status, usage bar, payment history |
+| Billing — Success | Done | Post-checkout success page with navigation |
+| Billing — Cancelled | Done | Checkout cancelled page with retry |
 
 ### Admin (port 3001) — DONE (v2 with API)
 | Component | Status | Description |
@@ -201,11 +226,11 @@ cd frontend/app && npm run dev       # port 3002
 cd frontend/admin && npm run dev     # port 3001
 ```
 
-## Tests (88 passing, 1 skipped)
+## Tests (102 passing, 0 skipped)
 ```bash
 cd backend && dotnet test tests/Eigdo.UnitTests/          # 25 tests (RNC validation, webhook HMAC)
 cd backend && dotnet test tests/Eigdo.FiscalTests/         # 54 tests (TaxCalculator, RetentionCalculator, DiscountDistributor, PayloadTransformer)
-cd backend && dotnet test tests/Eigdo.IntegrationTests/    # 9+1 tests (Health endpoint, Auth flow, WebApplicationFactory)
+cd backend && dotnet test tests/Eigdo.IntegrationTests/    # 23 tests (Health, Auth, Billing checkout+subscription+plans)
 ```
 
 ### PayloadTransformer Tests (30 tests)
@@ -247,7 +272,22 @@ cd backend && dotnet test tests/Eigdo.IntegrationTests/    # 9+1 tests (Health e
   - Backend: restore, build, unit tests, fiscal tests (with Postgres + Redis services)
   - Frontend: build landing, app, admin (parallel jobs)
 
+## Production Hardening — DONE
+- **Rate Limiting**: ASP.NET Core middleware — global (100/min), auth (10/min), webhook (500/min)
+- **Global Exception Handler**: Catches unhandled exceptions, returns safe error in production
+- **Structured Logging**: Serilog with JSON output, correlation, enrichment
+- **Stripe Integration**: Checkout sessions, webhook handling, billing portal (Stripe.net v46)
+
+## Frontend API Contract Fix — DONE
+- Fixed `api.ts` to unwrap `ApiResponse<T>` wrapper from backend
+- Fixed register form: `firstName`, `lastName`, `companyName` fields (was `fullName`)
+- Fixed auth response: uses `accessToken` (not `token`)
+- Fixed `User` interface: `firstName`+`lastName`+`companies` (not `fullName`)
+- Fixed admin login/layout to match backend response format
+- All 3 frontends build successfully
+
 ## Remaining Work (Priority Order)
-1. **Integration tests** — Full emission flow end-to-end, QBO webhook processing
-2. **Alanube Sandbox Certification** — 2-4 weeks process with DGII
-3. **Production hardening** — Rate limiting, Sentry, structured logging (Serilog)
+1. **Alanube Sandbox Certification** — 2-4 weeks process with DGII
+2. **Integration tests** — Full emission flow end-to-end, Stripe webhook, QBO webhook
+3. **Sentry error tracking** — Configure Sentry SDK for production error monitoring
+4. **Azul payment gateway** — Dominican local card processor as Stripe alternative

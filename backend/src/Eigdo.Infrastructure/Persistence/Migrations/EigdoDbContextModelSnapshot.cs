@@ -724,6 +724,14 @@ namespace Eigdo.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("AlanubeApiKey")
+                        .HasColumnType("text")
+                        .HasColumnName("alanube_api_key");
+
+                    b.Property<string>("AlanubeEnvironment")
+                        .HasColumnType("text")
+                        .HasColumnName("alanube_environment");
+
                     b.Property<bool>("CertificateConfigured")
                         .HasColumnType("boolean")
                         .HasColumnName("certificate_configured");
@@ -1065,6 +1073,11 @@ namespace Eigdo.Infrastructure.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("phone");
+
+                    b.Property<string>("SystemRole")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("system_role");
 
                     b.Property<DateTime?>("UpdatedAtUtc")
                         .HasColumnType("timestamp with time zone")
@@ -1497,6 +1510,71 @@ namespace Eigdo.Infrastructure.Persistence.Migrations
                     b.ToTable("audit_logs");
                 });
 
+            modelBuilder.Entity("Eigdo.Domain.Entities.Support.CertificationAssistanceConfig", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("ChargeOnNextBillingCycle")
+                        .HasColumnType("boolean")
+                        .HasColumnName("charge_on_next_billing_cycle");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasColumnName("currency");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("description");
+
+                    b.Property<int>("EstimatedDays")
+                        .HasColumnType("integer")
+                        .HasColumnName("estimated_days");
+
+                    b.Property<string>("IncludedItems")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("included_items");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_enabled");
+
+                    b.Property<decimal>("Price")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("price");
+
+                    b.Property<string>("Requirements")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("requirements");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.HasKey("Id")
+                        .HasName("p_k_certification_assistance_configs");
+
+                    b.ToTable("certification_assistance_configs");
+                });
+
             modelBuilder.Entity("Eigdo.Domain.Entities.Support.SupportTicket", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1504,9 +1582,19 @@ namespace Eigdo.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<Guid>("CompanyId")
+                    b.Property<Guid?>("CompanyId")
                         .HasColumnType("uuid")
                         .HasColumnName("company_id");
+
+                    b.Property<string>("ContactEmail")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("contact_email");
+
+                    b.Property<string>("ContactName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("contact_name");
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone")
@@ -1518,12 +1606,14 @@ namespace Eigdo.Infrastructure.Persistence.Migrations
                         .HasColumnName("description");
 
                     b.Property<string>("Priority")
-                        .HasColumnType("text")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
                         .HasColumnName("priority");
 
                     b.Property<string>("Status")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
                         .HasColumnName("status");
 
                     b.Property<string>("Subject")
@@ -1536,7 +1626,7 @@ namespace Eigdo.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at_utc");
 
-                    b.Property<Guid>("UserId")
+                    b.Property<Guid?>("UserId")
                         .HasColumnType("uuid")
                         .HasColumnName("user_id");
 
@@ -1550,6 +1640,60 @@ namespace Eigdo.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("i_x_support_tickets_user_id");
 
                     b.ToTable("support_tickets");
+                });
+
+            modelBuilder.Entity("Eigdo.Domain.Entities.Support.SupportTicketMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<bool>("IsStaffReply")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_staff_reply");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("message");
+
+                    b.Property<string>("SenderEmail")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("sender_email");
+
+                    b.Property<string>("SenderName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("sender_name");
+
+                    b.Property<Guid>("TicketId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("ticket_id");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("p_k_support_ticket_messages");
+
+                    b.HasIndex("TicketId")
+                        .HasDatabaseName("i_x_support_ticket_messages_ticket_id");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("i_x_support_ticket_messages_user_id");
+
+                    b.ToTable("support_ticket_messages");
                 });
 
             modelBuilder.Entity("Eigdo.Domain.Entities.Tenancy.Company", b =>
@@ -1930,18 +2074,33 @@ namespace Eigdo.Infrastructure.Persistence.Migrations
                     b.HasOne("Eigdo.Domain.Entities.Tenancy.Company", "Company")
                         .WithMany()
                         .HasForeignKey("CompanyId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
                         .HasConstraintName("f_k_support_tickets__companies_company_id");
 
                     b.HasOne("Eigdo.Domain.Entities.Identity.User", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
                         .HasConstraintName("f_k_support_tickets_users_user_id");
 
                     b.Navigation("Company");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Eigdo.Domain.Entities.Support.SupportTicketMessage", b =>
+                {
+                    b.HasOne("Eigdo.Domain.Entities.Support.SupportTicket", "Ticket")
+                        .WithMany("Messages")
+                        .HasForeignKey("TicketId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("f_k_support_ticket_messages_support_tickets_ticket_id");
+
+                    b.HasOne("Eigdo.Domain.Entities.Identity.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .HasConstraintName("f_k_support_ticket_messages_users_user_id");
+
+                    b.Navigation("Ticket");
 
                     b.Navigation("User");
                 });
@@ -2003,6 +2162,11 @@ namespace Eigdo.Infrastructure.Persistence.Migrations
                     b.Navigation("CompanyUsers");
 
                     b.Navigation("RefreshTokens");
+                });
+
+            modelBuilder.Entity("Eigdo.Domain.Entities.Support.SupportTicket", b =>
+                {
+                    b.Navigation("Messages");
                 });
 
             modelBuilder.Entity("Eigdo.Domain.Entities.Tenancy.Company", b =>

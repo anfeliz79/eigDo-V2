@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { api, type VendorMapping } from '@/lib/api';
+import { useEffect, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import { api, type VendorMapping, type OnboardingStatus, type DgiiRncResult } from '@/lib/api';
 
 const ecfTypes = [
   { value: 'E41', label: 'E41 - Compras' },
@@ -9,16 +10,28 @@ const ecfTypes = [
   { value: 'E47', label: 'E47 - Pagos al Exterior' },
 ];
 
+type RncStatus = 'idle' | 'validating' | 'valid' | 'inactive' | 'not_found' | 'error';
+
 export default function VendorMappingsPage() {
+  const router = useRouter();
   const [mappings, setMappings] = useState<VendorMapping[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<VendorMapping>>({});
   const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [isOnboarding, setIsOnboarding] = useState(false);
+  const [rncStatus, setRncStatus] = useState<RncStatus>('idle');
+  const [rncResult, setRncResult] = useState<DgiiRncResult | null>(null);
 
   useEffect(() => {
     loadMappings();
+    api.getOnboardingStatus()
+      .then((s: OnboardingStatus) => {
+        setIsOnboarding(s.currentStep !== 'Complete' && s.completionPercentage < 100);
+      })
+      .catch(() => {});
   }, []);
 
   const loadMappings = () => {
@@ -29,16 +42,61 @@ export default function VendorMappingsPage() {
       .finally(() => setLoading(false));
   };
 
+  const handleSync = async () => {
+    setSyncing(true);
+    setMessage(null);
+    try {
+      await api.syncQbo();
+      setMessage({ type: 'success', text: 'Datos sincronizados desde QuickBooks' });
+      loadMappings();
+    } catch (err) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Error al sincronizar' });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const startEdit = (m: VendorMapping) => {
     setEditing(m.id);
     setEditForm({ ...m });
     setMessage(null);
+    setRncStatus('idle');
+    setRncResult(null);
   };
 
   const cancelEdit = () => {
     setEditing(null);
     setEditForm({});
+    setRncStatus('idle');
+    setRncResult(null);
   };
+
+  const validateRnc = useCallback(async (rnc: string) => {
+    const cleaned = rnc.replace(/[-\s]/g, '');
+    if (cleaned.length < 9) {
+      setRncStatus('idle');
+      setRncResult(null);
+      return;
+    }
+    setRncStatus('validating');
+    try {
+      const result = await api.lookupRnc(cleaned);
+      setRncResult(result);
+      if (result.esActivo) {
+        setRncStatus('valid');
+        setEditForm(prev => ({
+          ...prev,
+          rnc: result.rnc,
+          razonSocialDgii: result.razonSocial,
+        }));
+      } else {
+        setRncStatus('inactive');
+      }
+    } catch {
+      setRncStatus('not_found');
+      setRncResult(null);
+    }
+  }, []);
 
   const saveEdit = async () => {
     setSaving(true);
@@ -47,6 +105,8 @@ export default function VendorMappingsPage() {
       await api.saveVendorMapping(editForm);
       setMessage({ type: 'success', text: 'Proveedor actualizado' });
       setEditing(null);
+      setRncStatus('idle');
+      setRncResult(null);
       loadMappings();
     } catch (err) {
       setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Error al guardar' });
@@ -55,12 +115,59 @@ export default function VendorMappingsPage() {
     }
   };
 
+  const handleContinue = async () => {
+    try {
+      await api.advanceOnboarding('TaxMapping');
+    } catch {}
+    router.push('/settings/taxes');
+  };
+
+  const unmappedCount = mappings.filter(m => !m.excluido && !m.rnc).length;
+  const totalActive = mappings.filter(m => !m.excluido).length;
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Mapeo de Proveedores</h1>
-        <p className="text-gray-500 mt-1">Ciclo 3: Asocia proveedores de QuickBooks con datos fiscales DGII</p>
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Mapeo de Proveedores</h1>
+          <p className="text-gray-500 mt-1">Ciclo 3: Asocia proveedores de QuickBooks con datos fiscales DGII</p>
+        </div>
+        <button
+          onClick={handleSync}
+          disabled={syncing}
+          className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:bg-green-400 transition flex items-center gap-2"
+        >
+          {syncing ? (
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+          ) : (
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182" />
+            </svg>
+          )}
+          {syncing ? 'Sincronizando...' : 'Sincronizar QBO'}
+        </button>
       </div>
+
+      {/* Info about retentions */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-700">
+        <strong>Retenciones:</strong> Para proveedores de servicios (E41), configura las tasas de retencion ITBIS e ISR. eigdo calculara las retenciones automaticamente al emitir.
+      </div>
+
+      {/* Progress summary */}
+      {mappings.length > 0 && (
+        <div className={`px-4 py-3 rounded-lg text-sm border ${
+          unmappedCount === 0
+            ? 'bg-green-50 text-green-700 border-green-200'
+            : 'bg-amber-50 text-amber-700 border-amber-200'
+        }`}>
+          {unmappedCount === 0 ? (
+            <span><strong>{totalActive}</strong> proveedores activos mapeados correctamente.</span>
+          ) : (
+            <span><strong>{unmappedCount}</strong> de {totalActive} proveedores activos sin RNC. Edita cada proveedor para asignar su RNC o marcalo como excluido.</span>
+          )}
+        </div>
+      )}
 
       {message && (
         <div className={`px-4 py-3 rounded-lg text-sm ${message.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
@@ -73,8 +180,18 @@ export default function VendorMappingsPage() {
           <div className="p-12 text-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto" /></div>
         ) : mappings.length === 0 ? (
           <div className="p-12 text-center text-gray-400">
+            <svg className="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 21v-7.5a.75.75 0 0 1 .75-.75h3a.75.75 0 0 1 .75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349M3.75 21V9.349m0 0a3.001 3.001 0 0 0 3.75-.615A2.993 2.993 0 0 0 9.75 9.75c.896 0 1.7-.393 2.25-1.016a2.993 2.993 0 0 0 2.25 1.016c.896 0 1.7-.393 2.25-1.015a3.001 3.001 0 0 0 3.75.614m-16.5 0a3.004 3.004 0 0 1-.621-4.72l1.189-1.19A1.5 1.5 0 0 1 5.378 3h13.243a1.5 1.5 0 0 1 1.06.44l1.19 1.189a3 3 0 0 1-.621 4.72M6.75 18h3.75a.75.75 0 0 0 .75-.75V13.5a.75.75 0 0 0-.75-.75H6.75a.75.75 0 0 0-.75.75v3.75c0 .414.336.75.75.75Z" />
+            </svg>
             <h3 className="text-lg font-medium text-gray-600 mb-1">Sin proveedores mapeados</h3>
-            <p>Conecta QuickBooks para sincronizar tus proveedores automaticamente.</p>
+            <p className="mb-4">Haz clic en &quot;Sincronizar QBO&quot; para importar proveedores desde QuickBooks.</p>
+            <button
+              onClick={handleSync}
+              disabled={syncing}
+              className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:bg-green-400 transition"
+            >
+              {syncing ? 'Sincronizando...' : 'Sincronizar ahora'}
+            </button>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -93,18 +210,38 @@ export default function VendorMappingsPage() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {mappings.map((m) => (
-                  <tr key={m.id} className="hover:bg-gray-50">
+                  <tr key={m.id} className={`hover:bg-gray-50 ${!m.excluido && !m.rnc ? 'bg-amber-50/50' : ''}`}>
                     {editing === m.id ? (
                       <>
                         <td className="px-4 py-3 text-sm font-medium text-gray-900">{m.qboDisplayName}</td>
                         <td className="px-4 py-2">
-                          <input
-                            type="text"
-                            value={editForm.rnc || ''}
-                            onChange={(e) => setEditForm({ ...editForm, rnc: e.target.value })}
-                            className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm font-mono focus:ring-1 focus:ring-blue-500 outline-none"
-                            placeholder="131000000"
-                          />
+                          <div className="space-y-1">
+                            <input
+                              type="text"
+                              value={editForm.rnc || ''}
+                              onChange={(e) => setEditForm({ ...editForm, rnc: e.target.value })}
+                              onBlur={(e) => validateRnc(e.target.value)}
+                              className={`w-full px-2 py-1.5 border rounded text-sm font-mono focus:ring-1 focus:ring-blue-500 outline-none ${
+                                rncStatus === 'valid' ? 'border-green-400 bg-green-50' :
+                                rncStatus === 'not_found' ? 'border-red-400 bg-red-50' :
+                                rncStatus === 'inactive' ? 'border-amber-400 bg-amber-50' :
+                                'border-gray-300'
+                              }`}
+                              placeholder="131000000"
+                            />
+                            {rncStatus === 'validating' && (
+                              <p className="text-xs text-blue-600">Validando en DGII...</p>
+                            )}
+                            {rncStatus === 'valid' && rncResult && (
+                              <p className="text-xs text-green-600">{rncResult.razonSocial}</p>
+                            )}
+                            {rncStatus === 'not_found' && (
+                              <p className="text-xs text-red-600">RNC no encontrado en DGII</p>
+                            )}
+                            {rncStatus === 'inactive' && rncResult && (
+                              <p className="text-xs text-amber-600">{rncResult.razonSocial} (Inactivo)</p>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-2">
                           <input
@@ -170,7 +307,7 @@ export default function VendorMappingsPage() {
                     ) : (
                       <>
                         <td className="px-4 py-3 text-sm font-medium text-gray-900">{m.qboDisplayName}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600 font-mono">{m.rnc || <span className="text-orange-500">Sin RNC</span>}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600 font-mono">{m.rnc || <span className="text-orange-500 font-sans">Sin RNC</span>}</td>
                         <td className="px-4 py-3 text-sm text-gray-600">{m.razonSocialDgii || <span className="text-gray-400">&mdash;</span>}</td>
                         <td className="px-4 py-3 text-sm text-gray-600">{m.tipoComprobante}</td>
                         <td className="px-4 py-3 text-sm text-gray-600 text-right">{m.retentionItbisRate ? `${(m.retentionItbisRate * 100).toFixed(0)}%` : <span className="text-gray-400">&mdash;</span>}</td>
@@ -196,6 +333,30 @@ export default function VendorMappingsPage() {
           </div>
         )}
       </div>
+
+      {/* Onboarding navigation */}
+      {isOnboarding && (
+        <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+          <button
+            onClick={() => router.push('/settings/customers')}
+            className="px-4 py-2 text-gray-600 text-sm font-medium hover:text-gray-900 transition flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
+            </svg>
+            Volver a Clientes
+          </button>
+          <button
+            onClick={handleContinue}
+            className="px-6 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition flex items-center gap-2"
+          >
+            Continuar a Impuestos
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
+            </svg>
+          </button>
+        </div>
+      )}
     </div>
   );
 }

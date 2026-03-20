@@ -58,6 +58,15 @@ public class PayloadTransformer
     }
 
     /// <summary>
+    /// Transforms a QBO document into an Alanube payload using a <see cref="TransformContext"/>.
+    /// Delegates to the core overload.
+    /// </summary>
+    public async Task<AlanubePayload> TransformAsync(TransformContext context, CancellationToken ct = default)
+    {
+        return await TransformAsync(context.CompanyId, context.EcfType, context.QboDocumentJson, ct);
+    }
+
+    /// <summary>
     /// Builds a fully-formed <see cref="AlanubePayload"/> from a raw QBO document JSON and the
     /// target e-CF type, pulling all required mappings from the database.
     /// </summary>

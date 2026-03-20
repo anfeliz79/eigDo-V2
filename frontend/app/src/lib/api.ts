@@ -1,6 +1,14 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5102/api';
 
 type FetchOptions = RequestInit & { token?: string };
+
+// Backend wraps all responses in ApiResponse<T>
+interface ApiResponseWrapper<T> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  errors?: Record<string, string[]>;
+}
 
 class ApiClient {
   private baseUrl: string;
@@ -18,8 +26,9 @@ class ApiClient {
     const { token, ...fetchOptions } = options;
     const authToken = token || this.getToken();
 
+    const isFormData = fetchOptions.body instanceof FormData;
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
       ...(fetchOptions.headers as Record<string, string>),
     };
 
@@ -43,26 +52,54 @@ class ApiClient {
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      throw new Error(body.message || body.error || `HTTP ${res.status}`);
+      // Handle ApiResponse error format
+      if (body.error) throw new Error(body.error);
+      if (body.errors) {
+        const firstError = Object.values(body.errors).flat()[0];
+        throw new Error(firstError as string || `HTTP ${res.status}`);
+      }
+      throw new Error(body.message || `HTTP ${res.status}`);
     }
 
     if (res.status === 204) return {} as T;
-    return res.json();
+
+    const body = await res.json();
+
+    // Unwrap ApiResponse<T> wrapper if present
+    if (body && typeof body === 'object' && 'success' in body && 'data' in body) {
+      if (!body.success) {
+        throw new Error(body.error || 'Request failed');
+      }
+      return body.data as T;
+    }
+
+    return body as T;
   }
 
   // Auth
   async login(email: string, password: string) {
-    return this.request<{ token: string; refreshToken: string; user: User }>('/auth/login', {
+    return this.request<AuthResponse>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
   }
 
-  async register(email: string, password: string, fullName: string) {
-    return this.request<{ token: string; refreshToken: string; user: User }>('/auth/register', {
+  async register(data: RegisterData) {
+    return this.request<AuthResponse>('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ email, password, fullName }),
+      body: JSON.stringify(data),
     });
+  }
+
+  async refreshToken(refreshToken: string) {
+    return this.request<AuthResponse>('/auth/refresh', {
+      method: 'POST',
+      body: JSON.stringify({ refreshToken }),
+    });
+  }
+
+  async getMe() {
+    return this.request<{ userId: string; email: string }>('/auth/me');
   }
 
   // Onboarding
@@ -79,94 +116,312 @@ class ApiClient {
 
   // Fiscal Settings
   async getFiscalSettings() {
-    return this.request<FiscalSettings>('/fiscal-settings');
+    return this.request<FiscalSettings>('/FiscalSettings');
   }
 
   async saveFiscalSettings(data: Partial<FiscalSettings>) {
-    return this.request<FiscalSettings>('/fiscal-settings', {
+    return this.request<FiscalSettings>('/FiscalSettings', {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   }
 
+  async uploadCertificate(file: File, password: string) {
+    const formData = new FormData();
+    formData.append('certificate', file);
+    formData.append('password', password);
+    return this.request<CertificateInfo>('/FiscalSettings/certificate', {
+      method: 'POST',
+      body: formData,
+    });
+  }
+
+  async getCertificateStatus() {
+    return this.request<CertificateInfo>('/FiscalSettings/certificate');
+  }
+
   // Customer Mappings
   async getCustomerMappings() {
-    return this.request<CustomerMapping[]>('/customer-mappings');
+    return this.request<CustomerMapping[]>('/CustomerMappings');
   }
 
   async saveCustomerMapping(data: Partial<CustomerMapping>) {
-    return this.request<CustomerMapping>('/customer-mappings', {
-      method: 'POST',
+    const method = data.id ? 'PUT' : 'POST';
+    const path = data.id ? `/customer-mappings/${data.id}` : '/CustomerMappings';
+    return this.request<CustomerMapping>(path, {
+      method,
       body: JSON.stringify(data),
     });
+  }
+
+  async deleteCustomerMapping(id: string) {
+    return this.request(`/customer-mappings/${id}`, { method: 'DELETE' });
   }
 
   // Vendor Mappings
   async getVendorMappings() {
-    return this.request<VendorMapping[]>('/vendor-mappings');
+    return this.request<VendorMapping[]>('/VendorMappings');
   }
 
   async saveVendorMapping(data: Partial<VendorMapping>) {
-    return this.request<VendorMapping>('/vendor-mappings', {
-      method: 'POST',
+    const method = data.id ? 'PUT' : 'POST';
+    const path = data.id ? `/vendor-mappings/${data.id}` : '/VendorMappings';
+    return this.request<VendorMapping>(path, {
+      method,
       body: JSON.stringify(data),
     });
+  }
+
+  async deleteVendorMapping(id: string) {
+    return this.request(`/vendor-mappings/${id}`, { method: 'DELETE' });
   }
 
   // Tax Mappings
   async getTaxMappings() {
-    return this.request<TaxMapping[]>('/tax-mappings');
+    return this.request<TaxMapping[]>('/TaxMappings');
   }
 
   async saveTaxMapping(data: Partial<TaxMapping>) {
-    return this.request<TaxMapping>('/tax-mappings', {
-      method: 'POST',
+    const method = data.id ? 'PUT' : 'POST';
+    const path = data.id ? `/tax-mappings/${data.id}` : '/TaxMappings';
+    return this.request<TaxMapping>(path, {
+      method,
       body: JSON.stringify(data),
     });
+  }
+
+  async deleteTaxMapping(id: string) {
+    return this.request(`/tax-mappings/${id}`, { method: 'DELETE' });
   }
 
   // Item Overrides
   async getItemOverrides() {
-    return this.request<ItemOverride[]>('/item-overrides');
+    return this.request<ItemOverride[]>('/ItemOverrides');
   }
 
   async saveItemOverride(data: Partial<ItemOverride>) {
-    return this.request<ItemOverride>('/item-overrides', {
-      method: 'POST',
+    const method = data.id ? 'PUT' : 'POST';
+    const path = data.id ? `/item-overrides/${data.id}` : '/ItemOverrides';
+    return this.request<ItemOverride>(path, {
+      method,
       body: JSON.stringify(data),
     });
   }
 
+  async deleteItemOverride(id: string) {
+    return this.request(`/item-overrides/${id}`, { method: 'DELETE' });
+  }
+
   // QBO
   async getQboAuthUrl() {
-    return this.request<{ url: string }>('/qbo/auth-url');
+    return this.request<{ authUrl: string }>('/qbo/auth-url');
   }
 
   async getQboStatus() {
     return this.request<{ connected: boolean; realmId?: string; lastSync?: string }>('/qbo/status');
   }
 
+  async getQboCompanyInfo() {
+    return this.request<QboCompanyInfo>('/qbo/company-info');
+  }
+
+  // DGII
+  async lookupRnc(rnc: string) {
+    return this.request<DgiiRncResult>(`/Dgii/rnc/${encodeURIComponent(rnc)}`);
+  }
+
+  async getCertificationAssistance() {
+    return this.request<CertificationAssistanceConfig>('/Dgii/certification-assistance');
+  }
+
   async disconnectQbo() {
     return this.request('/qbo/disconnect', { method: 'POST' });
+  }
+
+  async syncQbo() {
+    return this.request<{ message: string }>('/qbo/sync', { method: 'POST' });
   }
 
   // Documents
   async getDocuments(page = 1, pageSize = 20) {
     return this.request<PaginatedResult<EcfDocument>>(`/documents?page=${page}&pageSize=${pageSize}`);
   }
+
+  async getDocumentDetail(id: string) {
+    return this.request<EcfDocument>(`/documents/${id}`);
+  }
+
+  async getDocumentStats() {
+    return this.request<DocumentStats>('/documents/stats');
+  }
+
+  // Billing
+  async getPlans() {
+    return this.request<PlanDto[]>('/billing/plans');
+  }
+
+  async createCheckout(priceId: string, successUrl?: string, cancelUrl?: string) {
+    return this.request<CheckoutSessionResult>('/billing/checkout', {
+      method: 'POST',
+      body: JSON.stringify({ priceId, successUrl, cancelUrl }),
+    });
+  }
+
+  async getSubscription() {
+    return this.request<SubscriptionInfo | null>('/billing/subscription');
+  }
+
+  async canEmit() {
+    return this.request<{ canEmit: boolean; reason?: string }>('/billing/can-emit');
+  }
+
+  async getPayments(limit = 20) {
+    return this.request<PaymentHistory[]>(`/billing/payments?limit=${limit}`);
+  }
+
+  async createBillingPortal() {
+    return this.request<{ url: string }>('/billing/portal', { method: 'POST' });
+  }
+
+  // Emission
+  async previewEmission(data: EmissionRequest) {
+    return this.request<EmissionResult>('/emission/preview', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async emitDocument(data: EmissionRequest) {
+    return this.request<EmissionResult>('/emission/transform-and-queue', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Support Tickets
+  async getTickets() {
+    return this.request<SupportTicketListResponse>('/Support/tickets');
+  }
+
+  async createTicket(data: { subject: string; message: string; priority?: string }) {
+    return this.request<{ ticketId: string }>('/Support/tickets', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getTicketDetail(id: string) {
+    return this.request<SupportTicketDetail>(`/Support/tickets/${id}`);
+  }
+
+  async replyToTicket(id: string, message: string) {
+    return this.request<{ messageId: string }>(`/Support/tickets/${id}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ message }),
+    });
+  }
+
+  // Sequences
+  async getSequences() {
+    return this.request<SequenceDto[]>('/Sequences');
+  }
+
+  async createSequence(data: Partial<SequenceDto>) {
+    return this.request<SequenceDto>('/Sequences', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateSequence(id: string, data: Partial<SequenceDto>) {
+    return this.request<SequenceDto>(`/Sequences/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteSequence(id: string) {
+    return this.request(`/Sequences/${id}`, { method: 'DELETE' });
+  }
 }
 
-// Types
+// Types matching backend DTOs exactly
+
+export interface RegisterData {
+  email: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+  companyName: string;
+  phone?: string;
+}
+
+export interface AuthResponse {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: string;
+  user: User;
+}
+
 export interface User {
   id: string;
   email: string;
-  fullName: string;
+  firstName: string;
+  lastName: string;
+  companies: CompanyUser[];
+}
+
+export interface CompanyUser {
+  companyId: string;
+  companyName: string;
+  role: string;
 }
 
 export interface OnboardingStatus {
   currentStep: string;
-  completedSteps: string[];
-  isComplete: boolean;
+  completionPercentage: number;
+  missingItems: Record<string, string[]>;
+}
+
+export interface DgiiRncResult {
+  rnc: string;
+  razonSocial: string;
+  nombreComercial: string;
+  estado: string;
+  regimenPagos: string;
+  actividadEconomica: string;
+  administracionLocal: string;
+  esFacturadorElectronico: boolean;
+  esActivo: boolean;
+}
+
+export interface QboCompanyInfo {
+  // Identity
+  companyName?: string;
+  legalName?: string;
+  ein?: string;
+  // Contact
+  phone?: string;
+  email?: string;
+  website?: string;
+  // Company Address
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  countrySubDivisionCode?: string;
+  postalCode?: string;
+  country?: string;
+  fullAddress?: string;
+  // Legal Address
+  legalAddressLine1?: string;
+  legalCity?: string;
+  legalCountrySubDivisionCode?: string;
+  legalPostalCode?: string;
+  legalCountry?: string;
+  legalFullAddress?: string;
+  // Fiscal
+  fiscalYearStartMonth?: string;
+  companyStartDate?: string;
 }
 
 export interface FiscalSettings {
@@ -180,6 +435,14 @@ export interface FiscalSettings {
   defaultUnitMeasure?: number;
   defaultGoodServiceIndicator?: number;
   defaultNoTaxCodeBillingIndicator?: number;
+}
+
+export interface CertificateInfo {
+  configured: boolean;
+  subject?: string;
+  issuer?: string;
+  expiresUtc?: string;
+  daysUntilExpiry?: number;
 }
 
 export interface CustomerMapping {
@@ -226,6 +489,8 @@ export interface EcfDocument {
   status: string;
   encf?: string;
   qboDocNumber?: string;
+  buyerRnc?: string;
+  buyerName?: string;
   totalAmount: number;
   taxAmount: number;
   errorMessage?: string;
@@ -237,6 +502,141 @@ export interface PaginatedResult<T> {
   total: number;
   page: number;
   pageSize: number;
+}
+
+export interface DocumentStats {
+  total: number;
+  accepted: number;
+  rejected: number;
+  pending: number;
+  todayCount: number;
+}
+
+export interface EmissionRequest {
+  qboSourceId: string;
+  qboSourceType: string;
+  ecfType: string;
+}
+
+export interface EmissionResult {
+  documentId: string;
+  encf?: string;
+  status: string;
+  message?: string;
+}
+
+// Billing types
+export interface PlanDto {
+  id: string;
+  name: string;
+  description?: string;
+  includedDocumentsPerMonth: number;
+  sortOrder: number;
+  prices: PriceDto[];
+}
+
+export interface PriceDto {
+  id: string;
+  amount: number;
+  currency: string;
+  interval: string;
+}
+
+export interface CheckoutSessionResult {
+  sessionId: string;
+  url: string;
+}
+
+export interface SubscriptionInfo {
+  id: string;
+  planName: string;
+  status: string;
+  startDateUtc: string;
+  endDateUtc?: string;
+  currentPeriodStartUtc: string;
+  currentPeriodEndUtc: string;
+  documentsEmittedThisPeriod: number;
+  includedDocumentsPerMonth: number;
+  gateway: string;
+  priceAmount: number;
+  priceInterval: string;
+}
+
+export interface PaymentHistory {
+  id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  gateway: string;
+  createdAtUtc: string;
+}
+
+export interface CertificationAssistanceConfig {
+  id?: string;
+  isEnabled: boolean;
+  price: number;
+  currency: string;
+  title: string;
+  description: string;
+  includedItems: string[];
+  requirements: string[];
+  chargeOnNextBillingCycle: boolean;
+  estimatedDays: number;
+}
+
+// Support Ticket types
+export interface SupportTicketSummary {
+  id: string;
+  subject: string;
+  status: string;
+  priority: string;
+  messageCount: number;
+  createdAtUtc: string;
+  updatedAtUtc?: string;
+}
+
+export interface SupportTicketListResponse {
+  items: SupportTicketSummary[];
+  total: number;
+}
+
+export interface SupportTicketMessage {
+  id: string;
+  message: string;
+  isStaffReply: boolean;
+  senderName?: string;
+  senderEmail?: string;
+  createdAtUtc: string;
+}
+
+export interface SupportTicketDetail {
+  id: string;
+  subject: string;
+  status: string;
+  priority: string;
+  contactEmail?: string;
+  contactName?: string;
+  companyName?: string;
+  userName?: string;
+  userEmail?: string;
+  createdAtUtc: string;
+  messages: SupportTicketMessage[];
+}
+
+export interface SequenceDto {
+  id: string;
+  ecfType: string;
+  ecfTypeLabel: string;
+  rangeStart: number;
+  rangeEnd: number;
+  currentValue: number;
+  dueDateUtc: string;
+  isActive: boolean;
+  alertThreshold: number;
+  remainingCount: number;
+  isExhausted: boolean;
+  isExpired: boolean;
+  percentUsed: number;
 }
 
 export const api = new ApiClient(API_BASE);

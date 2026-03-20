@@ -1,14 +1,14 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
-import { api, type User } from './api';
+import { api, type User, type RegisterData } from './api';
 
 interface AuthContextType {
   user: User | null;
   token: string | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, fullName: string) => Promise<void>;
+  register: (data: RegisterData) => Promise<void>;
   logout: () => void;
 }
 
@@ -31,17 +31,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const res = await api.login(email, password);
-    localStorage.setItem('eigdo_token', res.token);
+    localStorage.setItem('eigdo_token', res.accessToken);
     localStorage.setItem('eigdo_user', JSON.stringify(res.user));
-    setToken(res.token);
+    setToken(res.accessToken);
     setUser(res.user);
   }, []);
 
-  const register = useCallback(async (email: string, password: string, fullName: string) => {
-    const res = await api.register(email, password, fullName);
-    localStorage.setItem('eigdo_token', res.token);
+  const register = useCallback(async (data: RegisterData) => {
+    const res = await api.register(data);
+    localStorage.setItem('eigdo_token', res.accessToken);
     localStorage.setItem('eigdo_user', JSON.stringify(res.user));
-    setToken(res.token);
+    setToken(res.accessToken);
     setUser(res.user);
   }, []);
 

@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { api, type ItemOverride } from '@/lib/api';
+import { useRouter } from 'next/navigation';
+import { api, type ItemOverride, type OnboardingStatus } from '@/lib/api';
 
 const goodServiceOptions = [
   { value: 0, label: 'Default (usar configuracion fiscal)' },
@@ -10,15 +11,23 @@ const goodServiceOptions = [
 ];
 
 export default function ItemOverridesPage() {
+  const router = useRouter();
   const [items, setItems] = useState<ItemOverride[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<ItemOverride>>({});
   const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [isOnboarding, setIsOnboarding] = useState(false);
 
   useEffect(() => {
     loadItems();
+    api.getOnboardingStatus()
+      .then((s: OnboardingStatus) => {
+        setIsOnboarding(s.currentStep !== 'Complete' && s.completionPercentage < 100);
+      })
+      .catch(() => {});
   }, []);
 
   const loadItems = () => {
@@ -27,6 +36,20 @@ export default function ItemOverridesPage() {
       .then(setItems)
       .catch(() => setItems([]))
       .finally(() => setLoading(false));
+  };
+
+  const handleSync = async () => {
+    setSyncing(true);
+    setMessage(null);
+    try {
+      await api.syncQbo();
+      setMessage({ type: 'success', text: 'Items sincronizados desde QuickBooks' });
+      loadItems();
+    } catch (err) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Error al sincronizar' });
+    } finally {
+      setSyncing(false);
+    }
   };
 
   const startEdit = (item: ItemOverride) => {
@@ -55,16 +78,58 @@ export default function ItemOverridesPage() {
     }
   };
 
+  const handleContinue = async () => {
+    // ItemOverrides is step 6 → next is CertificateUpload (7)
+    try {
+      await api.advanceOnboarding('CertificateUpload');
+    } catch {}
+    router.push('/onboarding');
+  };
+
+  const handleSkip = async () => {
+    // Skip this optional step — advance to next
+    try {
+      await api.advanceOnboarding('CertificateUpload');
+    } catch {}
+    router.push('/onboarding');
+  };
+
+  const overridesConfigured = items.filter(i => i.unitMeasureOverride || i.goodServiceIndicatorOverride).length;
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Overrides de Items</h1>
-        <p className="text-gray-500 mt-1">Ciclo 5: Personaliza unidad de medida y tipo bien/servicio por item</p>
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Overrides de Items</h1>
+          <p className="text-gray-500 mt-1">Ciclo 5: Personaliza unidad de medida y tipo bien/servicio por item</p>
+        </div>
+        <button
+          onClick={handleSync}
+          disabled={syncing}
+          className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:bg-green-400 transition flex items-center gap-2"
+        >
+          {syncing ? (
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+          ) : (
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182" />
+            </svg>
+          )}
+          {syncing ? 'Sincronizando...' : 'Sincronizar QBO'}
+        </button>
       </div>
 
       <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-700">
-        <strong>Nota:</strong> Solo necesitas overrides cuando un item especifico requiere valores distintos a los defaults configurados en tus datos fiscales. La mayoria de empresas no necesitan overrides.
+        <strong>Paso opcional:</strong> Solo necesitas overrides cuando un item especifico requiere valores distintos a los defaults configurados en tus datos fiscales. La mayoria de empresas pueden omitir este paso.
       </div>
+
+      {/* Summary */}
+      {items.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-700">
+          <strong>{items.length}</strong> items importados. <strong>{overridesConfigured}</strong> con overrides configurados.
+        </div>
+      )}
 
       {message && (
         <div className={`px-4 py-3 rounded-lg text-sm ${message.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
@@ -77,8 +142,28 @@ export default function ItemOverridesPage() {
           <div className="p-12 text-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto" /></div>
         ) : items.length === 0 ? (
           <div className="p-12 text-center text-gray-400">
-            <h3 className="text-lg font-medium text-gray-600 mb-1">Sin overrides configurados</h3>
-            <p>Los items usaran los valores por defecto de tus datos fiscales. Agrega overrides solo cuando un item necesite valores distintos.</p>
+            <svg className="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="m20.25 7.5-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" />
+            </svg>
+            <h3 className="text-lg font-medium text-gray-600 mb-1">Sin items importados</h3>
+            <p className="mb-4">Haz clic en &quot;Sincronizar QBO&quot; para importar items, o salta este paso si no necesitas overrides.</p>
+            <div className="flex gap-3 justify-center">
+              <button
+                onClick={handleSync}
+                disabled={syncing}
+                className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:bg-green-400 transition"
+              >
+                {syncing ? 'Sincronizando...' : 'Sincronizar ahora'}
+              </button>
+              {isOnboarding && (
+                <button
+                  onClick={handleSkip}
+                  className="px-4 py-2 border border-gray-300 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition"
+                >
+                  Saltar este paso
+                </button>
+              )}
+            </div>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -160,6 +245,38 @@ export default function ItemOverridesPage() {
           </div>
         )}
       </div>
+
+      {/* Onboarding navigation */}
+      {isOnboarding && (
+        <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+          <button
+            onClick={() => router.push('/settings/taxes')}
+            className="px-4 py-2 text-gray-600 text-sm font-medium hover:text-gray-900 transition flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
+            </svg>
+            Volver a Impuestos
+          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={handleSkip}
+              className="px-4 py-2 border border-gray-300 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition"
+            >
+              Saltar
+            </button>
+            <button
+              onClick={handleContinue}
+              className="px-6 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition flex items-center gap-2"
+            >
+              Continuar
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

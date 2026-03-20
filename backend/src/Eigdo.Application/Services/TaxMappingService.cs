@@ -34,7 +34,7 @@ public class TaxMappingService
     {
         var company = await _db.Companies.FirstOrDefaultAsync(c => c.Id == companyId, ct);
         if (company == null)
-            return (null, "Company not found.");
+            return (null, "Empresa no encontrada.");
 
         var mapping = await _db.TaxCodeMappings
             .FirstOrDefaultAsync(m => m.CompanyId == companyId
@@ -72,7 +72,7 @@ public class TaxMappingService
             .FirstOrDefaultAsync(m => m.Id == mappingId && m.CompanyId == companyId, ct);
 
         if (mapping == null)
-            return "Tax code mapping not found.";
+            return "Mapeo de codigo fiscal no encontrado.";
 
         _db.TaxCodeMappings.Remove(mapping);
         await _db.SaveChangesAsync(ct);

@@ -1,7 +1,9 @@
 using System.Text;
+using System.Threading.RateLimiting;
 using Eigdo.Infrastructure;
 using Eigdo.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -40,6 +42,9 @@ builder.Services.AddScoped<Eigdo.Application.Services.DiscountDistributor>();
 builder.Services.AddScoped<Eigdo.Application.Services.EmissionOrchestrator>();
 builder.Services.AddScoped<Eigdo.Application.Services.PayloadTransformer>();
 builder.Services.AddScoped<Eigdo.Application.Services.QboWebhookHandler>();
+builder.Services.AddScoped<Eigdo.Application.Services.CheckoutService>();
+builder.Services.AddScoped<Eigdo.Application.Services.SubscriptionService>();
+builder.Services.AddScoped<Eigdo.Application.Services.SequenceService>();
 
 // Authentication
 var jwtSecret = builder.Configuration.GetValue<string>("JWT_SECRET") ?? "development_secret_key_change_in_production_64chars_minimum!!!!!!!!";
@@ -119,6 +124,44 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 
+// Rate Limiting
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    // Global fixed window — 100 requests per minute per IP
+    options.AddFixedWindowLimiter("global", limiterOptions =>
+    {
+        limiterOptions.PermitLimit = 100;
+        limiterOptions.Window = TimeSpan.FromMinutes(1);
+        limiterOptions.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+        limiterOptions.QueueLimit = 10;
+    });
+
+    // Auth endpoints — stricter: 10 attempts per minute per IP
+    options.AddFixedWindowLimiter("auth", limiterOptions =>
+    {
+        limiterOptions.PermitLimit = 10;
+        limiterOptions.Window = TimeSpan.FromMinutes(1);
+        limiterOptions.QueueLimit = 0;
+    });
+
+    // Webhooks — generous: 500 per minute
+    options.AddFixedWindowLimiter("webhook", limiterOptions =>
+    {
+        limiterOptions.PermitLimit = 500;
+        limiterOptions.Window = TimeSpan.FromMinutes(1);
+        limiterOptions.QueueLimit = 50;
+    });
+
+    options.OnRejected = async (context, ct) =>
+    {
+        context.HttpContext.Response.ContentType = "application/json";
+        await context.HttpContext.Response.WriteAsync(
+            "{\"success\":false,\"error\":\"Demasiadas solicitudes. Intenta de nuevo en unos minutos.\"}", ct);
+    };
+});
+
 // Health Checks
 builder.Services.AddHealthChecks()
     .AddNpgSql(builder.Configuration.GetValue<string>("DATABASE_CONNECTION")
@@ -129,6 +172,7 @@ builder.Services.AddHealthChecks()
 var app = builder.Build();
 
 // Middleware pipeline
+app.UseMiddleware<Eigdo.Api.Middleware.GlobalExceptionHandler>();
 app.UseSerilogRequestLogging();
 
 if (app.Environment.IsDevelopment())
@@ -138,6 +182,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors();
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -146,13 +191,18 @@ app.MapHealthChecks("/health");
 
 app.MapControllers();
 
-// Auto-migrate in development
-if (app.Environment.IsDevelopment())
+// Auto-migrate database
 {
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<EigdoDbContext>();
     await db.Database.MigrateAsync();
 }
+
+// Seed plans (safe to call multiple times — checks if data exists)
+await Eigdo.Infrastructure.Persistence.DataSeeder.SeedPlansAsync(app.Services);
+
+// Seed SuperAdmin user (creates or updates password)
+await Eigdo.Infrastructure.Persistence.DataSeeder.SeedSuperAdminAsync(app.Services);
 
 Log.Information("eigdo API starting on {Urls}", string.Join(", ", app.Urls));
 

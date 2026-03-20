@@ -36,7 +36,7 @@ public class VendorMappingService
             .FirstOrDefaultAsync(m => m.Id == mappingId && m.CompanyId == companyId, ct);
 
         if (mapping == null)
-            return (null, "Vendor mapping not found.");
+            return (null, "Mapeo de proveedor no encontrado.");
 
         return (MapToResponse(mapping), null);
     }
@@ -46,13 +46,13 @@ public class VendorMappingService
     {
         var company = await _db.Companies.FirstOrDefaultAsync(c => c.Id == companyId, ct);
         if (company == null)
-            return (null, "Company not found.");
+            return (null, "Empresa no encontrada.");
 
         var exists = await _db.VendorMappings
             .AnyAsync(m => m.CompanyId == companyId && m.QboVendorId == request.QboVendorId, ct);
 
         if (exists)
-            return (null, "A mapping for this QBO vendor already exists.");
+            return (null, "Ya existe un mapeo para este proveedor QBO.");
 
         var mapping = new VendorMapping
         {
@@ -85,7 +85,7 @@ public class VendorMappingService
             .FirstOrDefaultAsync(m => m.Id == mappingId && m.CompanyId == companyId, ct);
 
         if (mapping == null)
-            return (null, "Vendor mapping not found.");
+            return (null, "Mapeo de proveedor no encontrado.");
 
         if (request.Rnc != null) mapping.Rnc = request.Rnc;
         if (request.RazonSocialDgii != null) mapping.RazonSocialDgii = request.RazonSocialDgii;
@@ -112,7 +112,7 @@ public class VendorMappingService
             .FirstOrDefaultAsync(m => m.Id == mappingId && m.CompanyId == companyId, ct);
 
         if (mapping == null)
-            return "Vendor mapping not found.";
+            return "Mapeo de proveedor no encontrado.";
 
         _db.VendorMappings.Remove(mapping);
         await _db.SaveChangesAsync(ct);

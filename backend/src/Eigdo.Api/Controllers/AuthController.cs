@@ -3,11 +3,13 @@ using Eigdo.Application.DTOs.Auth;
 using Eigdo.Application.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Eigdo.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[EnableRateLimiting("auth")]
 public class AuthController : EigdoControllerBase
 {
     private readonly AuthService _authService;

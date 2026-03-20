@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5102/api';
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -18,18 +18,30 @@ export default function AdminLoginPage() {
     setLoading(true);
 
     try {
-      const res = await fetch(`${API_BASE}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Login failed');
+      let res: Response;
+      try {
+        res = await fetch(`${API_BASE}/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+      } catch {
+        throw new Error('No se pudo conectar al servidor. Verifique que el API este corriendo.');
+      }
 
-      // TODO: Verify admin role from token claims
-      localStorage.setItem('eigdo_admin_token', data.token);
+      const raw = await res.json();
+      if (!res.ok) throw new Error(raw.error || raw.message || 'Credenciales incorrectas');
+
+      // Unwrap ApiResponse wrapper
+      const data = raw.data || raw;
+
+      if (!data.accessToken) {
+        throw new Error('Respuesta del servidor invalida. Contacte soporte.');
+      }
+
+      localStorage.setItem('eigdo_admin_token', data.accessToken);
       localStorage.setItem('eigdo_admin_user', JSON.stringify(data.user));
-      router.push('/dashboard');
+      window.location.href = '/dashboard';
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error de autenticacion');
     } finally {

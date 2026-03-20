@@ -61,6 +61,8 @@ public interface IEigdoDbContext
     // Support
     DbSet<AuditLog> AuditLogs { get; }
     DbSet<SupportTicket> SupportTickets { get; }
+    DbSet<SupportTicketMessage> SupportTicketMessages { get; }
+    DbSet<CertificationAssistanceConfig> CertificationAssistanceConfigs { get; }
 
     // DbContext operations
     EntityEntry<TEntity> Entry<TEntity>(TEntity entity) where TEntity : class;

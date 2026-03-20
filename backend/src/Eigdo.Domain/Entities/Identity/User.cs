@@ -17,6 +17,11 @@ public class User : BaseEntity
     public bool IsActive { get; set; } = true;
     public DateTime? LastLoginUtc { get; set; }
 
+    /// <summary>
+    /// System-level role. Null for regular users, "SuperAdmin" for platform administrators.
+    /// </summary>
+    public string? SystemRole { get; set; }
+
     // Navigation
     public ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();
     public ICollection<CompanyUser> CompanyUsers { get; set; } = new List<CompanyUser>();

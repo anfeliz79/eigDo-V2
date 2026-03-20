@@ -34,7 +34,7 @@ public class ItemOverrideService
     {
         var company = await _db.Companies.FirstOrDefaultAsync(c => c.Id == companyId, ct);
         if (company == null)
-            return (null, "Company not found.");
+            return (null, "Empresa no encontrada.");
 
         var existing = await _db.ItemOverrides
             .FirstOrDefaultAsync(m => m.CompanyId == companyId
@@ -73,7 +73,7 @@ public class ItemOverrideService
             .FirstOrDefaultAsync(m => m.Id == mappingId && m.CompanyId == companyId, ct);
 
         if (existing == null)
-            return "Item override not found.";
+            return "Override de item no encontrado.";
 
         _db.ItemOverrides.Remove(existing);
         await _db.SaveChangesAsync(ct);

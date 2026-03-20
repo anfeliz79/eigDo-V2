@@ -14,6 +14,8 @@ const navItems = [
   { href: '/settings/taxes', label: 'Impuestos', icon: TaxIcon },
   { href: '/settings/items', label: 'Items', icon: ItemsIcon },
   { href: '/settings/qbo', label: 'QuickBooks', icon: QboIcon },
+  { href: '/settings/billing', label: 'Facturacion', icon: BillingIcon },
+  { href: '/support', label: 'Soporte', icon: SupportIcon },
 ];
 
 export default function Sidebar() {
@@ -54,10 +56,10 @@ export default function Sidebar() {
       <div className="px-3 py-4 border-t border-gray-100">
         <div className="flex items-center gap-3 px-3 py-2">
           <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 text-sm font-bold">
-            {user?.fullName?.charAt(0)?.toUpperCase() || 'U'}
+            {user?.firstName?.charAt(0)?.toUpperCase() || 'U'}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-900 truncate">{user?.fullName || 'Usuario'}</p>
+            <p className="text-sm font-medium text-gray-900 truncate">{user ? `${user.firstName} ${user.lastName}` : 'Usuario'}</p>
             <p className="text-xs text-gray-500 truncate">{user?.email}</p>
           </div>
         </div>
@@ -134,6 +136,22 @@ function QboIcon({ active }: { active: boolean }) {
   return (
     <svg className={`w-5 h-5 ${active ? 'text-blue-600' : 'text-gray-400'}`} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
+    </svg>
+  );
+}
+
+function BillingIcon({ active }: { active: boolean }) {
+  return (
+    <svg className={`w-5 h-5 ${active ? 'text-blue-600' : 'text-gray-400'}`} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z" />
+    </svg>
+  );
+}
+
+function SupportIcon({ active }: { active: boolean }) {
+  return (
+    <svg className={`w-5 h-5 ${active ? 'text-blue-600' : 'text-gray-400'}`} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 01-.825-.242m9.345-8.334a2.126 2.126 0 00-.476-.095 48.64 48.64 0 00-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0011.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155" />
     </svg>
   );
 }

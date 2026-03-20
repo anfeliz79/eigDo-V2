@@ -44,3 +44,12 @@ public class UpdateFiscalSettingsRequest
     public int? TaxAmountIndicator { get; set; }
     public BillingIndicator? DefaultNoTaxCodeBillingIndicator { get; set; }
 }
+
+public class CertificateInfoResponse
+{
+    public bool Configured { get; set; }
+    public string? Subject { get; set; }
+    public string? Issuer { get; set; }
+    public DateTime? ExpiresUtc { get; set; }
+    public int? DaysUntilExpiry { get; set; }
+}

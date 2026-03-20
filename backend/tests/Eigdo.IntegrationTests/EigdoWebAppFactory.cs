@@ -1,15 +1,24 @@
+using System.Text;
 using Eigdo.Application.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Eigdo.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.IdentityModel.Tokens;
 
 namespace Eigdo.IntegrationTests;
 
 public class EigdoWebAppFactory : WebApplicationFactory<Program>
 {
+    public const string TestJwtSecret = "test_secret_key_for_integration_tests_must_be_at_least_64_chars_long!!!";
+    public const string TestJwtIssuer = "eigdo";
+    public const string TestJwtAudience = "eigdo-clients";
+
+    private readonly string _dbName = "EigdoTestDb_" + Guid.NewGuid().ToString("N");
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -18,9 +27,9 @@ public class EigdoWebAppFactory : WebApplicationFactory<Program>
         {
             config.AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["JWT_SECRET"] = "test_secret_key_for_integration_tests_must_be_at_least_64_chars_long!!!",
-                ["JWT_ISSUER"] = "eigdo",
-                ["JWT_AUDIENCE"] = "eigdo-clients",
+                ["JWT_SECRET"] = TestJwtSecret,
+                ["JWT_ISSUER"] = TestJwtIssuer,
+                ["JWT_AUDIENCE"] = TestJwtAudience,
                 ["DATABASE_CONNECTION"] = "Host=localhost;Database=eigdo_test",
                 ["REDIS_CONNECTION"] = "localhost:6379",
             });
@@ -43,14 +52,42 @@ public class EigdoWebAppFactory : WebApplicationFactory<Program>
                 d => d.ServiceType.FullName?.Contains("HealthCheck") == true).ToList();
             foreach (var d in healthDescriptors) services.Remove(d);
 
-            // Add InMemory database
+            // Add InMemory database (fixed name so all scopes share the same instance)
             services.AddDbContext<EigdoDbContext>(options =>
-                options.UseInMemoryDatabase("EigdoTestDb_" + Guid.NewGuid()));
+                options.UseInMemoryDatabase(_dbName));
 
             services.AddScoped<IEigdoDbContext>(sp => sp.GetRequiredService<EigdoDbContext>());
 
             // Add basic health checks (no external dependencies)
             services.AddHealthChecks();
+
+            // Re-configure JWT authentication with the test secret
+            // This is needed because Program.cs reads builder.Configuration before
+            // ConfigureAppConfiguration merges the in-memory config
+            services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
+            {
+                options.TokenValidationParameters = new TokenValidationParameters
+                {
+                    ValidateIssuer = true,
+                    ValidateAudience = true,
+                    ValidateLifetime = true,
+                    ValidateIssuerSigningKey = true,
+                    ValidIssuer = TestJwtIssuer,
+                    ValidAudience = TestJwtAudience,
+                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(TestJwtSecret)),
+                    ClockSkew = TimeSpan.FromMinutes(1)
+                };
+            });
         });
+    }
+
+    /// <summary>
+    /// Seeds plan data after the host is fully built.
+    /// Called by test classes that need seeded plans.
+    /// </summary>
+    public void EnsureSeeded()
+    {
+        using var scope = Services.CreateScope();
+        DataSeeder.SeedPlansAsync(scope.ServiceProvider).GetAwaiter().GetResult();
     }
 }

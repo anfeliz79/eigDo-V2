@@ -24,7 +24,10 @@ public class FiscalSettingsService
             .FirstOrDefaultAsync(f => f.CompanyId == companyId, ct);
 
         if (fs == null)
-            return (null, "Fiscal settings not found for this company.");
+        {
+            // Return empty response for new companies (no fiscal data yet)
+            return (new FiscalSettingsResponse { CompanyId = companyId }, null);
+        }
 
         return (MapToResponse(fs), null);
     }
@@ -40,7 +43,7 @@ public class FiscalSettingsService
     {
         var company = await _db.Companies.FirstOrDefaultAsync(c => c.Id == companyId, ct);
         if (company == null)
-            return (null, "Company not found.");
+            return (null, "Empresa no encontrada.");
 
         var fs = await _db.FiscalSettings
             .FirstOrDefaultAsync(f => f.CompanyId == companyId, ct);
@@ -89,7 +92,7 @@ public class FiscalSettingsService
             .FirstOrDefaultAsync(f => f.CompanyId == companyId, ct);
 
         if (fs == null)
-            return (null, "Fiscal settings not found for this company.");
+            return (null, "Datos fiscales no encontrados para esta empresa.");
 
         var mappings = await _db.PaymentMethodMappings
             .Where(m => m.FiscalSettingsId == fs.Id)
@@ -107,7 +110,7 @@ public class FiscalSettingsService
             .FirstOrDefaultAsync(f => f.CompanyId == companyId, ct);
 
         if (fs == null)
-            return (null, "Fiscal settings not found for this company.");
+            return (null, "Datos fiscales no encontrados para esta empresa.");
 
         var mapping = await _db.PaymentMethodMappings
             .FirstOrDefaultAsync(m => m.FiscalSettingsId == fs.Id
@@ -144,7 +147,7 @@ public class FiscalSettingsService
             .FirstOrDefaultAsync(f => f.CompanyId == companyId, ct);
 
         if (fs == null)
-            return (null, "Fiscal settings not found for this company.");
+            return (null, "Datos fiscales no encontrados para esta empresa.");
 
         var mappings = await _db.PaymentConditionMappings
             .Where(m => m.FiscalSettingsId == fs.Id)
@@ -162,7 +165,7 @@ public class FiscalSettingsService
             .FirstOrDefaultAsync(f => f.CompanyId == companyId, ct);
 
         if (fs == null)
-            return (null, "Fiscal settings not found for this company.");
+            return (null, "Datos fiscales no encontrados para esta empresa.");
 
         var mapping = await _db.PaymentConditionMappings
             .FirstOrDefaultAsync(m => m.FiscalSettingsId == fs.Id

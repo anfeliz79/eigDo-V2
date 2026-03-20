@@ -36,7 +36,7 @@ public class CustomerMappingService
             .FirstOrDefaultAsync(m => m.Id == mappingId && m.CompanyId == companyId, ct);
 
         if (mapping == null)
-            return (null, "Customer mapping not found.");
+            return (null, "Mapeo de cliente no encontrado.");
 
         return (MapToResponse(mapping), null);
     }
@@ -46,14 +46,14 @@ public class CustomerMappingService
     {
         var company = await _db.Companies.FirstOrDefaultAsync(c => c.Id == companyId, ct);
         if (company == null)
-            return (null, "Company not found.");
+            return (null, "Empresa no encontrada.");
 
         // Check for duplicate QBO customer mapping
         var exists = await _db.CustomerMappings
             .AnyAsync(m => m.CompanyId == companyId && m.QboCustomerId == request.QboCustomerId, ct);
 
         if (exists)
-            return (null, "A mapping for this QBO customer already exists.");
+            return (null, "Ya existe un mapeo para este cliente QBO.");
 
         var mapping = new CustomerMapping
         {
@@ -84,7 +84,7 @@ public class CustomerMappingService
             .FirstOrDefaultAsync(m => m.Id == mappingId && m.CompanyId == companyId, ct);
 
         if (mapping == null)
-            return (null, "Customer mapping not found.");
+            return (null, "Mapeo de cliente no encontrado.");
 
         if (request.Rnc != null) mapping.Rnc = request.Rnc;
         if (request.RazonSocialDgii != null) mapping.RazonSocialDgii = request.RazonSocialDgii;
@@ -109,7 +109,7 @@ public class CustomerMappingService
             .FirstOrDefaultAsync(m => m.Id == mappingId && m.CompanyId == companyId, ct);
 
         if (mapping == null)
-            return "Customer mapping not found.";
+            return "Mapeo de cliente no encontrado.";
 
         _db.CustomerMappings.Remove(mapping);
         await _db.SaveChangesAsync(ct);

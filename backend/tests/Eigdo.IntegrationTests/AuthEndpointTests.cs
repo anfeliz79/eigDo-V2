@@ -110,7 +110,7 @@ public class AuthEndpointTests : IClassFixture<EigdoWebAppFactory>
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
-    [Fact(Skip = "Requires matching JWT config between Program.cs and AuthService in InMemory test context")]
+    [Fact]
     public async Task ProtectedEndpoint_WithValidToken_Returns200()
     {
         var client = _factory.CreateClient();

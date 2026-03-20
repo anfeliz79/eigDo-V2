@@ -61,6 +61,8 @@ public class EigdoDbContext : DbContext, IEigdoDbContext
     // Support
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<SupportTicket> SupportTickets => Set<SupportTicket>();
+    public DbSet<SupportTicketMessage> SupportTicketMessages => Set<SupportTicketMessage>();
+    public DbSet<CertificationAssistanceConfig> CertificationAssistanceConfigs => Set<CertificationAssistanceConfig>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -105,6 +107,7 @@ public class EigdoDbContext : DbContext, IEigdoDbContext
             e.Property(u => u.FirstName).HasMaxLength(100);
             e.Property(u => u.LastName).HasMaxLength(100);
             e.Property(u => u.Phone).HasMaxLength(20);
+            e.Property(u => u.SystemRole).HasMaxLength(50);
         });
 
         modelBuilder.Entity<RefreshToken>(e =>
@@ -309,9 +312,28 @@ public class EigdoDbContext : DbContext, IEigdoDbContext
 
         modelBuilder.Entity<SupportTicket>(e =>
         {
-            e.HasOne(st => st.Company).WithMany().HasForeignKey(st => st.CompanyId);
-            e.HasOne(st => st.User).WithMany().HasForeignKey(st => st.UserId);
+            e.HasOne(st => st.Company).WithMany().HasForeignKey(st => st.CompanyId).IsRequired(false);
+            e.HasOne(st => st.User).WithMany().HasForeignKey(st => st.UserId).IsRequired(false);
             e.Property(st => st.Subject).HasMaxLength(256);
+            e.Property(st => st.ContactEmail).HasMaxLength(256);
+            e.Property(st => st.ContactName).HasMaxLength(200);
+            e.Property(st => st.Status).HasMaxLength(20);
+            e.Property(st => st.Priority).HasMaxLength(20);
+        });
+
+        modelBuilder.Entity<SupportTicketMessage>(e =>
+        {
+            e.HasOne(m => m.Ticket).WithMany(t => t.Messages).HasForeignKey(m => m.TicketId);
+            e.HasOne(m => m.User).WithMany().HasForeignKey(m => m.UserId).IsRequired(false);
+            e.Property(m => m.SenderName).HasMaxLength(200);
+            e.Property(m => m.SenderEmail).HasMaxLength(256);
+        });
+
+        modelBuilder.Entity<CertificationAssistanceConfig>(e =>
+        {
+            e.Property(c => c.Price).HasPrecision(18, 2);
+            e.Property(c => c.Currency).HasMaxLength(3);
+            e.Property(c => c.Title).HasMaxLength(256);
         });
     }
 

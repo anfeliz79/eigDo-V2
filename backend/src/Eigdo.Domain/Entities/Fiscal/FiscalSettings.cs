@@ -28,6 +28,10 @@ public class FiscalSettings : BaseEntity
     public bool CertificateConfigured { get; set; }
     public DateTime? CertificateExpiresUtc { get; set; }
 
+    // Alanube API Configuration
+    public string? AlanubeApiKey { get; set; }
+    public string? AlanubeEnvironment { get; set; } // sandbox, production
+
     // Navigation
     public Company Company { get; set; } = null!;
     public ICollection<Sequence> Sequences { get; set; } = new List<Sequence>();
