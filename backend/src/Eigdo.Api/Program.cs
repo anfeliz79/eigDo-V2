@@ -45,6 +45,8 @@ builder.Services.AddScoped<Eigdo.Application.Services.QboWebhookHandler>();
 builder.Services.AddScoped<Eigdo.Application.Services.CheckoutService>();
 builder.Services.AddScoped<Eigdo.Application.Services.SubscriptionService>();
 builder.Services.AddScoped<Eigdo.Application.Services.SequenceService>();
+builder.Services.AddScoped<Eigdo.Application.Services.CompanyService>();
+builder.Services.AddScoped<Eigdo.Application.Services.FieldMappingService>();
 
 // Authentication
 var jwtSecret = builder.Configuration.GetValue<string>("JWT_SECRET") ?? "development_secret_key_change_in_production_64chars_minimum!!!!!!!!";

@@ -43,7 +43,7 @@ public static class DataSeeder
             Id = Guid.Parse("11111111-1111-1111-1111-111111111101"),
             PlanId = basicPlan.Id,
             Amount = 1500.00m,
-            Currency = "DOP",
+            Currency = "USD",
             Interval = "monthly",
             IsActive = true
         };
@@ -53,7 +53,7 @@ public static class DataSeeder
             Id = Guid.Parse("11111111-1111-1111-1111-111111111102"),
             PlanId = basicPlan.Id,
             Amount = 15000.00m,
-            Currency = "DOP",
+            Currency = "USD",
             Interval = "yearly",
             IsActive = true
         };
@@ -75,7 +75,7 @@ public static class DataSeeder
             Id = Guid.Parse("22222222-2222-2222-2222-222222222201"),
             PlanId = proPlan.Id,
             Amount = 3500.00m,
-            Currency = "DOP",
+            Currency = "USD",
             Interval = "monthly",
             IsActive = true
         };
@@ -85,7 +85,7 @@ public static class DataSeeder
             Id = Guid.Parse("22222222-2222-2222-2222-222222222202"),
             PlanId = proPlan.Id,
             Amount = 35000.00m,
-            Currency = "DOP",
+            Currency = "USD",
             Interval = "yearly",
             IsActive = true
         };
@@ -107,7 +107,7 @@ public static class DataSeeder
             Id = Guid.Parse("33333333-3333-3333-3333-333333333301"),
             PlanId = enterprisePlan.Id,
             Amount = 7500.00m,
-            Currency = "DOP",
+            Currency = "USD",
             Interval = "monthly",
             IsActive = true
         };
@@ -117,7 +117,7 @@ public static class DataSeeder
             Id = Guid.Parse("33333333-3333-3333-3333-333333333302"),
             PlanId = enterprisePlan.Id,
             Amount = 75000.00m,
-            Currency = "DOP",
+            Currency = "USD",
             Interval = "yearly",
             IsActive = true
         };

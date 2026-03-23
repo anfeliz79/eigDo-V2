@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import Logo from './Logo';
+import CompanySwitcher from './CompanySwitcher';
 import { useAuth } from '@/lib/auth';
 
 const navItems = [
@@ -29,6 +30,11 @@ export default function Sidebar() {
         <Link href="/dashboard">
           <Logo size="md" />
         </Link>
+      </div>
+
+      {/* Company Switcher */}
+      <div className="px-3 py-3 border-b border-gray-100">
+        <CompanySwitcher />
       </div>
 
       {/* Navigation */}

@@ -49,18 +49,12 @@ public static class DependencyInjection
             _ => ConnectionMultiplexer.Connect(redisConnection));
 
         // Named HttpClients
+        // Alanube HttpClient — base URL and auth are set dynamically by AlanubeClient
+        // using AlanubeConfigProvider (reads from DB first, then env vars as fallback)
         services.AddHttpClient("alanube", client =>
         {
-            var baseUrl = configuration.GetValue<string>("ALANUBE_BASE_URL") ?? "https://sandbox.alanube.co/dom/v1";
-            client.BaseAddress = new Uri(baseUrl);
             client.Timeout = TimeSpan.FromSeconds(30);
             client.DefaultRequestHeaders.Add("Accept", "application/json");
-
-            var token = configuration.GetValue<string>("ALANUBE_JWT_TOKEN");
-            if (!string.IsNullOrEmpty(token))
-            {
-                client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-            }
         });
 
         services.AddHttpClient("qbo", client =>
@@ -81,10 +75,15 @@ public static class DependencyInjection
         services.AddScoped<IAuditService, AuditService>();
         services.AddScoped<ISequenceService, SequenceService>();
 
-        // Fiscal provider
-        services.AddScoped<IFiscalProvider, AlanubeClient>();
+        // Alanube reseller config provider
+        services.AddScoped<IAlanubeConfigProvider, AlanubeConfigProvider>();
+
+        // Fiscal provider (also registered as concrete type for direct injection)
+        services.AddScoped<AlanubeClient>();
+        services.AddScoped<IFiscalProvider>(sp => sp.GetRequiredService<AlanubeClient>());
 
         // QBO integration
+        services.AddScoped<IQboConfigProvider, QboConfigProvider>();
         services.AddScoped<IQboClient, Integration.QboApiClient>();
 
         // DGII RNC lookup

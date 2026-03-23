@@ -5,6 +5,7 @@ using Eigdo.Domain.Entities.Fiscal;
 using Eigdo.Domain.Entities.Identity;
 using Eigdo.Domain.Entities.Integration;
 using Eigdo.Domain.Entities.Mapping;
+using Eigdo.Domain.Entities.Settings;
 using Eigdo.Domain.Entities.Support;
 using Eigdo.Domain.Entities.Tenancy;
 using Microsoft.EntityFrameworkCore;
@@ -52,6 +53,7 @@ public interface IEigdoDbContext
     DbSet<VendorMapping> VendorMappings { get; }
     DbSet<TaxCodeMapping> TaxCodeMappings { get; }
     DbSet<ItemOverride> ItemOverrides { get; }
+    DbSet<FieldMapping> FieldMappings { get; }
 
     // Emission
     DbSet<EcfDocument> EcfDocuments { get; }
@@ -63,6 +65,9 @@ public interface IEigdoDbContext
     DbSet<SupportTicket> SupportTickets { get; }
     DbSet<SupportTicketMessage> SupportTicketMessages { get; }
     DbSet<CertificationAssistanceConfig> CertificationAssistanceConfigs { get; }
+
+    // Settings
+    DbSet<AppSetting> AppSettings { get; }
 
     // DbContext operations
     EntityEntry<TEntity> Entry<TEntity>(TEntity entity) where TEntity : class;

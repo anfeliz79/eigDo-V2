@@ -6,6 +6,7 @@ using Eigdo.Domain.Entities.Fiscal;
 using Eigdo.Domain.Entities.Identity;
 using Eigdo.Domain.Entities.Integration;
 using Eigdo.Domain.Entities.Mapping;
+using Eigdo.Domain.Entities.Settings;
 using Eigdo.Domain.Entities.Support;
 using Eigdo.Domain.Entities.Tenancy;
 using Microsoft.EntityFrameworkCore;
@@ -52,6 +53,7 @@ public class EigdoDbContext : DbContext, IEigdoDbContext
     public DbSet<VendorMapping> VendorMappings => Set<VendorMapping>();
     public DbSet<TaxCodeMapping> TaxCodeMappings => Set<TaxCodeMapping>();
     public DbSet<ItemOverride> ItemOverrides => Set<ItemOverride>();
+    public DbSet<FieldMapping> FieldMappings => Set<FieldMapping>();
 
     // Emission
     public DbSet<EcfDocument> EcfDocuments => Set<EcfDocument>();
@@ -63,6 +65,9 @@ public class EigdoDbContext : DbContext, IEigdoDbContext
     public DbSet<SupportTicket> SupportTickets => Set<SupportTicket>();
     public DbSet<SupportTicketMessage> SupportTicketMessages => Set<SupportTicketMessage>();
     public DbSet<CertificationAssistanceConfig> CertificationAssistanceConfigs => Set<CertificationAssistanceConfig>();
+
+    // Settings
+    public DbSet<AppSetting> AppSettings => Set<AppSetting>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -121,6 +126,7 @@ public class EigdoDbContext : DbContext, IEigdoDbContext
         {
             e.Property(c => c.Name).HasMaxLength(256);
             e.Property(c => c.Rnc).HasMaxLength(11);
+            e.Property(c => c.AlanubeCompanyId).HasMaxLength(100);
         });
 
         modelBuilder.Entity<CompanyUser>(e =>
@@ -275,6 +281,17 @@ public class EigdoDbContext : DbContext, IEigdoDbContext
             e.Property(io => io.QboItemName).HasMaxLength(256);
         });
 
+        modelBuilder.Entity<FieldMapping>(e =>
+        {
+            e.HasIndex(fm => new { fm.CompanyId, fm.EntityType, fm.TargetField }).IsUnique();
+            e.HasOne(fm => fm.Company).WithMany().HasForeignKey(fm => fm.CompanyId);
+            e.Property(fm => fm.EntityType).HasMaxLength(50);
+            e.Property(fm => fm.TargetField).HasMaxLength(100);
+            e.Property(fm => fm.SourceType).HasMaxLength(20);
+            e.Property(fm => fm.QboFieldPath).HasMaxLength(200);
+            e.Property(fm => fm.FixedValue).HasMaxLength(500);
+        });
+
         // === Emission ===
         modelBuilder.Entity<EcfDocument>(e =>
         {
@@ -334,6 +351,14 @@ public class EigdoDbContext : DbContext, IEigdoDbContext
             e.Property(c => c.Price).HasPrecision(18, 2);
             e.Property(c => c.Currency).HasMaxLength(3);
             e.Property(c => c.Title).HasMaxLength(256);
+        });
+
+        // === Settings ===
+        modelBuilder.Entity<AppSetting>(e =>
+        {
+            e.HasIndex(s => s.Key).IsUnique();
+            e.Property(s => s.Key).HasMaxLength(100);
+            e.Property(s => s.Value).HasMaxLength(2000);
         });
     }
 

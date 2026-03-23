@@ -22,6 +22,11 @@ class ApiClient {
     return localStorage.getItem('eigdo_token');
   }
 
+  private getCompanyId(): string | null {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem('eigdo_company');
+  }
+
   private async request<T>(path: string, options: FetchOptions = {}): Promise<T> {
     const { token, ...fetchOptions } = options;
     const authToken = token || this.getToken();
@@ -34,6 +39,11 @@ class ApiClient {
 
     if (authToken) {
       headers['Authorization'] = `Bearer ${authToken}`;
+    }
+
+    const companyId = this.getCompanyId();
+    if (companyId) {
+      headers['X-Company-Id'] = companyId;
     }
 
     const res = await fetch(`${this.baseUrl}${path}`, {
@@ -147,7 +157,7 @@ class ApiClient {
 
   async saveCustomerMapping(data: Partial<CustomerMapping>) {
     const method = data.id ? 'PUT' : 'POST';
-    const path = data.id ? `/customer-mappings/${data.id}` : '/CustomerMappings';
+    const path = data.id ? `/CustomerMappings/${data.id}` : '/CustomerMappings';
     return this.request<CustomerMapping>(path, {
       method,
       body: JSON.stringify(data),
@@ -155,7 +165,7 @@ class ApiClient {
   }
 
   async deleteCustomerMapping(id: string) {
-    return this.request(`/customer-mappings/${id}`, { method: 'DELETE' });
+    return this.request(`/CustomerMappings/${id}`, { method: 'DELETE' });
   }
 
   // Vendor Mappings
@@ -165,7 +175,7 @@ class ApiClient {
 
   async saveVendorMapping(data: Partial<VendorMapping>) {
     const method = data.id ? 'PUT' : 'POST';
-    const path = data.id ? `/vendor-mappings/${data.id}` : '/VendorMappings';
+    const path = data.id ? `/VendorMappings/${data.id}` : '/VendorMappings';
     return this.request<VendorMapping>(path, {
       method,
       body: JSON.stringify(data),
@@ -173,7 +183,7 @@ class ApiClient {
   }
 
   async deleteVendorMapping(id: string) {
-    return this.request(`/vendor-mappings/${id}`, { method: 'DELETE' });
+    return this.request(`/VendorMappings/${id}`, { method: 'DELETE' });
   }
 
   // Tax Mappings
@@ -183,7 +193,7 @@ class ApiClient {
 
   async saveTaxMapping(data: Partial<TaxMapping>) {
     const method = data.id ? 'PUT' : 'POST';
-    const path = data.id ? `/tax-mappings/${data.id}` : '/TaxMappings';
+    const path = data.id ? `/TaxMappings/${data.id}` : '/TaxMappings';
     return this.request<TaxMapping>(path, {
       method,
       body: JSON.stringify(data),
@@ -191,7 +201,7 @@ class ApiClient {
   }
 
   async deleteTaxMapping(id: string) {
-    return this.request(`/tax-mappings/${id}`, { method: 'DELETE' });
+    return this.request(`/TaxMappings/${id}`, { method: 'DELETE' });
   }
 
   // Item Overrides
@@ -201,7 +211,7 @@ class ApiClient {
 
   async saveItemOverride(data: Partial<ItemOverride>) {
     const method = data.id ? 'PUT' : 'POST';
-    const path = data.id ? `/item-overrides/${data.id}` : '/ItemOverrides';
+    const path = data.id ? `/ItemOverrides/${data.id}` : '/ItemOverrides';
     return this.request<ItemOverride>(path, {
       method,
       body: JSON.stringify(data),
@@ -209,7 +219,23 @@ class ApiClient {
   }
 
   async deleteItemOverride(id: string) {
-    return this.request(`/item-overrides/${id}`, { method: 'DELETE' });
+    return this.request(`/ItemOverrides/${id}`, { method: 'DELETE' });
+  }
+
+  // QBO Sample & Field Mappings
+  async getQboSample(entityType: string) {
+    return this.request<QboSampleRecord>(`/qbo/sample/${encodeURIComponent(entityType)}`);
+  }
+
+  async getFieldMappings(entityType: string) {
+    return this.request<FieldMappingDto[]>(`/FieldMappings/${encodeURIComponent(entityType)}`);
+  }
+
+  async saveFieldMappings(entityType: string, mappings: FieldMappingDto[]) {
+    return this.request<void>(`/FieldMappings/${encodeURIComponent(entityType)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ mappings }),
+    });
   }
 
   // QBO
@@ -267,6 +293,13 @@ class ApiClient {
     });
   }
 
+  async confirmCheckout(sessionId: string) {
+    return this.request<string>('/billing/confirm-checkout', {
+      method: 'POST',
+      body: JSON.stringify({ sessionId }),
+    });
+  }
+
   async getSubscription() {
     return this.request<SubscriptionInfo | null>('/billing/subscription');
   }
@@ -300,10 +333,10 @@ class ApiClient {
 
   // Support Tickets
   async getTickets() {
-    return this.request<SupportTicketListResponse>('/Support/tickets');
+    return this.request<SupportTicketSummary[]>('/Support/tickets');
   }
 
-  async createTicket(data: { subject: string; message: string; priority?: string }) {
+  async createTicket(data: { subject: string; description: string; priority?: string }) {
     return this.request<{ ticketId: string }>('/Support/tickets', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -343,6 +376,18 @@ class ApiClient {
   async deleteSequence(id: string) {
     return this.request(`/Sequences/${id}`, { method: 'DELETE' });
   }
+
+  // Companies
+  async getMyCompanies() {
+    return this.request<CompanyInfo[]>('/companies');
+  }
+
+  async createCompany(name: string) {
+    return this.request<CompanyInfo>('/companies', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
+  }
 }
 
 // Types matching backend DTOs exactly
@@ -361,6 +406,7 @@ export interface AuthResponse {
   refreshToken: string;
   expiresAt: string;
   user: User;
+  companies?: CompanyUser[];
 }
 
 export interface User {
@@ -623,6 +669,14 @@ export interface SupportTicketDetail {
   messages: SupportTicketMessage[];
 }
 
+export interface CompanyInfo {
+  id: string;
+  name: string;
+  isOnboardingComplete: boolean;
+  hasActiveSubscription: boolean;
+  qboConnected: boolean;
+}
+
 export interface SequenceDto {
   id: string;
   ecfType: string;
@@ -637,6 +691,19 @@ export interface SequenceDto {
   isExhausted: boolean;
   isExpired: boolean;
   percentUsed: number;
+}
+
+export interface QboSampleRecord {
+  id: string;
+  displayName: string;
+  fields: Record<string, string>;
+}
+
+export interface FieldMappingDto {
+  targetField: string;
+  sourceType: 'QboField' | 'Fixed';
+  qboFieldPath?: string;
+  fixedValue?: string;
 }
 
 export const api = new ApiClient(API_BASE);

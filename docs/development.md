@@ -25,9 +25,11 @@ dotnet ef database update --project ../Eigdo.Infrastructure
 ```bash
 cd backend/src/Eigdo.Api
 dotnet run
-# API starts on http://localhost:5102
+# API starts on http://localhost:5102 (puerto configurado en launchSettings.json)
 # Health check: http://localhost:5102/health
 ```
+
+> **Nota**: El puerto 5102 es solo para desarrollo (definido en `Properties/launchSettings.json`). En producción, el API corre en el puerto 5000 (definido por la variable de entorno `ASPNETCORE_URLS`).
 
 ### 3. Start Frontend (Company App)
 
@@ -165,6 +167,82 @@ await api.updateCustomerMapping(id, data);
 - On 401: clears localStorage (`eigdo_token`, `eigdo_user`), redirects to `/login`
 - FormData detection: skips Content-Type header for multipart uploads
 - Base URL from `NEXT_PUBLIC_API_URL` env var
+- Envía el header `X-Company-Id` automáticamente usando el valor de `eigdo_company` en localStorage
+
+> **Importante**: La clave `eigdo_company` en localStorage es necesaria para todas las llamadas al API. Se establece al iniciar sesión o seleccionar una empresa. Si falta, las llamadas al API fallarán con "Empresa no identificada".
+
+---
+
+## Panel de Administración (Admin)
+
+El panel de administración corre en el puerto **3001** durante desarrollo (`frontend/admin`).
+
+### Configuración
+
+```bash
+cd frontend/admin
+cp .env.example .env.local
+# Editar .env.local:
+# NEXT_PUBLIC_API_URL=http://localhost:5102/api
+npm install
+npm run dev
+```
+
+### Funcionalidades principales
+
+- Gestión de empresas y usuarios
+- Visualización de suscripciones y pagos
+- Soporte / tickets
+- Acceso exclusivo para usuarios con rol SuperAdmin
+
+### Acceso
+
+Se requiere un usuario con rol `SuperAdmin` (el usuario seed `argenis1989@gmail.com` tiene este rol por defecto).
+
+---
+
+## Soporte Multi-Empresa y Header X-Company-Id
+
+eigdo v2 soporta múltiples empresas por usuario. Cada llamada al API debe incluir el header `X-Company-Id` para identificar la empresa activa.
+
+### Flujo
+
+1. El usuario inicia sesión y obtiene la lista de empresas asociadas
+2. Selecciona una empresa → se guarda en `localStorage` como `eigdo_company`
+3. El cliente API (`lib/api.ts`) lee `eigdo_company` y lo envía como header `X-Company-Id` en cada request
+4. El backend extrae el `X-Company-Id` del header y filtra los datos por empresa
+
+### Consideraciones de desarrollo
+
+- Si `eigdo_company` no existe en localStorage, el API retorna error "Empresa no identificada"
+- Al cambiar de empresa, se actualiza `eigdo_company` y se recargan los datos
+- En el panel admin, el header se maneja de forma diferente (acceso cross-empresa)
+
+---
+
+## Field Mapping (Mapeo de Campos)
+
+El sistema de mapeo de campos permite configurar la equivalencia entre campos de QuickBooks Online (QBO) y los campos fiscales requeridos por la DGII (a través de Alanube).
+
+### Ciclos de mapeo
+
+| Mapeo | Endpoint | Descripción |
+|-------|----------|-------------|
+| Clientes | `/api/CustomerMappings` | Mapeo de clientes QBO → tipo de contribuyente (RNC/Cédula), tipo de ingreso (E31/E32/etc.) |
+| Suplidores | `/api/VendorMappings` | Mapeo de suplidores QBO → tipo de gasto (E41/E42/etc.) |
+| Impuestos | `/api/TaxMappings` | Mapeo de códigos de impuesto QBO → indicador de ITBIS |
+| Items | `/api/ItemOverrides` | Sobreescrituras de unidad de medida y otros campos por item |
+| Secuencias | `/api/Sequences` | Configuración de secuencias de comprobantes fiscales (NCF/e-CF) |
+
+### Concepto clave
+
+El mapeo es una **equivalencia de campos** (field mapping), NO una sincronización registro por registro. Se configura cómo traducir los valores de QBO a los valores fiscales dominicanos.
+
+### Ejemplo de flujo
+
+1. Se sincronizan clientes desde QBO
+2. El usuario asigna a cada cliente su tipo de comprobante (E31, E32, etc.) y su RNC/Cédula
+3. Al generar un documento fiscal, el sistema usa estos mapeos para construir el e-CF correcto
 
 ---
 

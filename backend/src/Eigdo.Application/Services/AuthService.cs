@@ -158,6 +158,7 @@ public class AuthService
                 Email = user.Email,
                 FirstName = user.FirstName,
                 LastName = user.LastName,
+                SystemRole = user.SystemRole,
                 Companies = user.CompanyUsers.Select(cu => new CompanyUserDto
                 {
                     CompanyId = cu.CompanyId,

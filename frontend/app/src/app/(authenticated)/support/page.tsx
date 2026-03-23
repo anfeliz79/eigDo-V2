@@ -42,7 +42,7 @@ export default function SupportPage() {
   const loadTickets = () => {
     setLoading(true);
     api.getTickets()
-      .then((res) => setTickets(res.items))
+      .then((res) => setTickets(Array.isArray(res) ? res : []))
       .catch(() => setTickets([]))
       .finally(() => setLoading(false));
   };
@@ -77,7 +77,7 @@ export default function SupportPage() {
     try {
       await api.createTicket({
         subject: newSubject.trim(),
-        message: newMessage.trim(),
+        description: newMessage.trim(),
         priority: newPriority,
       });
       setNewSubject('');

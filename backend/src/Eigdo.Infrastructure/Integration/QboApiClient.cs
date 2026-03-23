@@ -3,7 +3,6 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Eigdo.Domain.Interfaces;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Eigdo.Infrastructure.Integration;
@@ -16,48 +15,49 @@ public class QboApiClient : IQboClient
 {
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IEncryptionService _encryption;
+    private readonly IQboConfigProvider _configProvider;
     private readonly ILogger<QboApiClient> _logger;
-    private readonly string _clientId;
-    private readonly string _clientSecret;
-    private readonly string _environment;
 
     private const string AuthBaseUrl = "https://appcenter.intuit.com/connect/oauth2";
     private const string TokenUrl = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer";
     private const string SandboxApiBase = "https://sandbox-quickbooks.api.intuit.com";
     private const string ProductionApiBase = "https://quickbooks.api.intuit.com";
-    private const string Scopes = "com.intuit.quickbooks.accounting";
 
     public QboApiClient(
         IHttpClientFactory httpClientFactory,
         IEncryptionService encryption,
-        IConfiguration config,
+        IQboConfigProvider configProvider,
         ILogger<QboApiClient> logger)
     {
         _httpClientFactory = httpClientFactory;
         _encryption = encryption;
+        _configProvider = configProvider;
         _logger = logger;
-        _clientId = config.GetValue<string>("QBO_CLIENT_ID") ?? "";
-        _clientSecret = config.GetValue<string>("QBO_CLIENT_SECRET") ?? "";
-        _environment = config.GetValue<string>("QBO_ENVIRONMENT") ?? "sandbox";
     }
 
-    private string ApiBaseUrl => _environment == "production" ? ProductionApiBase : SandboxApiBase;
+    private async Task<string> GetApiBaseUrlAsync()
+    {
+        var env = await _configProvider.GetEnvironmentAsync();
+        return env == "production" ? ProductionApiBase : SandboxApiBase;
+    }
 
     /// <summary>
     /// Generates the OAuth 2.0 authorization URL for the user to grant access.
     /// </summary>
-    public Task<string> GetAuthorizationUrlAsync(Guid companyId, string redirectUri)
+    public async Task<string> GetAuthorizationUrlAsync(Guid companyId, string redirectUri)
     {
+        var clientId = await _configProvider.GetClientIdAsync();
+        var scope = await _configProvider.GetScopeAsync();
         var state = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{companyId}:{Guid.NewGuid():N}"));
 
         var url = $"{AuthBaseUrl}?" +
-            $"client_id={Uri.EscapeDataString(_clientId)}" +
+            $"client_id={Uri.EscapeDataString(clientId)}" +
             $"&response_type=code" +
-            $"&scope={Uri.EscapeDataString(Scopes)}" +
+            $"&scope={Uri.EscapeDataString(scope)}" +
             $"&redirect_uri={Uri.EscapeDataString(redirectUri)}" +
             $"&state={Uri.EscapeDataString(state)}";
 
-        return Task.FromResult(url);
+        return url;
     }
 
     /// <summary>
@@ -68,8 +68,10 @@ public class QboApiClient : IQboClient
     {
         try
         {
+            var clientId = await _configProvider.GetClientIdAsync();
+            var clientSecret = await _configProvider.GetClientSecretAsync();
             var client = _httpClientFactory.CreateClient();
-            var authHeader = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_clientId}:{_clientSecret}"));
+            var authHeader = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{clientId}:{clientSecret}"));
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", authHeader);
 
             var content = new FormUrlEncodedContent(new Dictionary<string, string>
@@ -104,10 +106,12 @@ public class QboApiClient : IQboClient
     {
         try
         {
+            var clientId = await _configProvider.GetClientIdAsync();
+            var clientSecret = await _configProvider.GetClientSecretAsync();
             var refreshToken = _encryption.Decrypt(encryptedRefreshToken);
 
             var client = _httpClientFactory.CreateClient();
-            var authHeader = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_clientId}:{_clientSecret}"));
+            var authHeader = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{clientId}:{clientSecret}"));
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", authHeader);
 
             var content = new FormUrlEncodedContent(new Dictionary<string, string>
@@ -141,9 +145,10 @@ public class QboApiClient : IQboClient
     {
         try
         {
+            var apiBaseUrl = await GetApiBaseUrlAsync();
             var typeName = typeof(T).Name;
             var entityName = typeName.ToLower();
-            var url = $"{ApiBaseUrl}/v3/company/{realmId}/{entityName}/{entityId}?minorversion=73";
+            var url = $"{apiBaseUrl}/v3/company/{realmId}/{entityName}/{entityId}?minorversion=73";
 
             _logger.LogInformation("QBO GetEntity: GET {Url}", url);
 
@@ -187,7 +192,8 @@ public class QboApiClient : IQboClient
     {
         try
         {
-            var url = $"{ApiBaseUrl}/v3/company/{realmId}/query?query={Uri.EscapeDataString(query)}&minorversion=73";
+            var apiBaseUrl = await GetApiBaseUrlAsync();
+            var url = $"{apiBaseUrl}/v3/company/{realmId}/query?query={Uri.EscapeDataString(query)}&minorversion=73";
 
             var client = CreateAuthenticatedClient(accessToken);
             var response = await client.GetAsync(url, ct);

@@ -13,6 +13,9 @@ public class Company : BaseEntity
     public bool IsOnboardingComplete { get; set; }
     public bool IsActive { get; set; } = true;
 
+    // Alanube reseller integration
+    public string? AlanubeCompanyId { get; set; }
+
     // Navigation
     public ICollection<CompanyUser> CompanyUsers { get; set; } = new List<CompanyUser>();
     public FiscalSettings? FiscalSettings { get; set; }

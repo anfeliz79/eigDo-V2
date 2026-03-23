@@ -114,6 +114,106 @@ grep JWT /opt/eigdo/config/.env
 # All API instances must share the same JWT_SECRET
 ```
 
+### "Suscripcion Requerida" después de pagar
+
+**Causa**: Falta la clave `eigdo_company` en localStorage. Sin esta clave, el sistema no puede identificar la empresa y asume que no tiene suscripción activa.
+
+**Solución**:
+```
+1. Abrir DevTools → Application → Local Storage
+2. Limpiar todo el localStorage (Clear All)
+3. Cerrar sesión e iniciar sesión nuevamente
+4. Al re-loguearse, eigdo_company se reestablece automáticamente
+```
+
+### "NetworkError when attempting to fetch resource"
+
+**Causa**: Error de CORS. El origen desde el cual se accede al API no está incluido en la lista de orígenes permitidos.
+
+**Solución**:
+```bash
+# Verificar la variable ALLOWED_ORIGINS en la configuración
+# Desarrollo: appsettings.Development.json
+# Producción: /opt/eigdo/config/.env
+
+# Debe incluir el origen exacto (protocolo + dominio + puerto)
+# Ejemplo: ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001,https://app.eigdo.com
+```
+
+### Tickets de soporte retornan 400
+
+**Causa**: El nombre del campo en el request body no coincide con lo esperado por el API. El endpoint espera `description`, no `message`.
+
+**Solución**:
+```typescript
+// Incorrecto
+await api.createTicket({ subject: "...", message: "..." });
+
+// Correcto
+await api.createTicket({ subject: "...", description: "..." });
+```
+
+### "Empresa no identificada" en llamadas al API
+
+**Causa**: Falta el header `X-Company-Id` en el request. Esto sucede cuando `eigdo_company` no existe en localStorage.
+
+**Solución**:
+```
+1. Verificar en DevTools → Application → Local Storage que exista eigdo_company
+2. Si no existe: cerrar sesión y volver a iniciar sesión
+3. Si persiste: limpiar localStorage completo y re-loguearse
+4. Verificar que lib/api.ts esté enviando el header X-Company-Id
+```
+
+### Stripe webhook no crea la suscripción
+
+**Causa**: La variable `STRIPE_WEBHOOK_SECRET` no está configurada o tiene un valor placeholder.
+
+**Solución**:
+```bash
+# Verificar que el secret sea real (no un placeholder)
+grep STRIPE_WEBHOOK_SECRET /opt/eigdo/config/.env
+
+# Obtener el secret correcto desde el dashboard de Stripe:
+# Stripe Dashboard → Developers → Webhooks → Signing secret
+
+# Reiniciar el servicio después de actualizar
+systemctl restart eigdo-api
+```
+
+### Planes no aparecen en la landing page
+
+**Causa**: Chunks de build antiguos que apuntan a una URL de API incorrecta. Next.js embebe `NEXT_PUBLIC_API_URL` en el build, así que archivos estáticos viejos pueden tener la URL anterior.
+
+**Solución**:
+```bash
+# Hacer un deploy limpio eliminando el directorio completo
+rm -rf /opt/eigdo/landing
+bash infra/scripts/deploy.sh landing
+
+# Verificar que .env.landing tenga la URL correcta ANTES del build
+cat /opt/eigdo/config/.env.landing
+# Debe contener: NEXT_PUBLIC_API_URL=https://api.eigdo.com/api
+```
+
+### QBO connect da 404 después del redirect
+
+**Causa**: La variable `APP_URL` no coincide con la URL real desde la cual los usuarios acceden a la aplicación. El callback de OAuth usa `APP_URL` para construir la URL de redirección.
+
+**Solución**:
+```bash
+# Verificar APP_URL en la configuración
+grep APP_URL /opt/eigdo/config/.env
+
+# Debe coincidir EXACTAMENTE con la URL que los usuarios usan
+# Ejemplo: APP_URL=https://app.eigdo.com (sin trailing slash)
+
+# También verificar QBO_REDIRECT_URI en la configuración de Intuit Developer
+# Debe ser: https://api.eigdo.com/api/qbo/callback
+
+systemctl restart eigdo-api
+```
+
 ---
 
 ## Database Issues

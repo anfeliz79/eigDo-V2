@@ -89,6 +89,7 @@ export default function CertificateUploadPage() {
       setSelectedFile(null);
       setPassword('');
       setMessage({ type: 'success', text: 'Certificado cargado exitosamente.' });
+      localStorage.removeItem('eigdo_skip_certificate');
     } catch (err) {
       setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Error al cargar el certificado.' });
     } finally {
@@ -127,7 +128,7 @@ export default function CertificateUploadPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-2xl mx-auto space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Certificado Digital</h1>
@@ -339,6 +340,47 @@ export default function CertificateUploadPage() {
         </>
       )}
 
+      {/* Skip option during onboarding */}
+      {isOnboarding && !certInfo?.configured && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5">
+          <div className="flex items-start gap-3">
+            <svg className="w-5 h-5 text-amber-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+            </svg>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-amber-800">No tienes certificado digital?</p>
+              <p className="text-sm text-amber-700 mt-1">
+                Puedes continuar sin certificado y cargarlo despues. Sin embargo, no podras emitir comprobantes hasta que lo configures.
+              </p>
+              <div className="flex flex-wrap gap-3 mt-3">
+                <a
+                  href="https://www.viafirma.do"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-amber-300 text-amber-800 text-sm font-medium rounded-lg hover:bg-amber-100 transition"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z" />
+                  </svg>
+                  Comprar en Viafirma
+                </a>
+                <a
+                  href="https://wa.me/18095550000?text=Hola%2C%20necesito%20ayuda%20con%20mi%20certificado%20digital%20para%20eigdo"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z" />
+                  </svg>
+                  Pedir Asistencia
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Onboarding navigation */}
       {isOnboarding && (
         <div className="flex items-center justify-between pt-4 border-t border-gray-200">
@@ -351,16 +393,29 @@ export default function CertificateUploadPage() {
             </svg>
             Volver a Items
           </button>
-          <button
-            onClick={handleContinue}
-            disabled={!certInfo?.configured}
-            className="px-6 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:bg-blue-300 transition flex items-center gap-2"
-          >
-            Continuar a Secuencias
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-3">
+            {!certInfo?.configured && (
+              <button
+                onClick={() => {
+                  localStorage.setItem('eigdo_skip_certificate', 'true');
+                  window.location.href = '/dashboard';
+                }}
+                className="px-5 py-2.5 border border-gray-300 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition"
+              >
+                Cargar despues
+              </button>
+            )}
+            <button
+              onClick={handleContinue}
+              disabled={!certInfo?.configured}
+              className="px-6 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:bg-blue-300 transition flex items-center gap-2"
+            >
+              Continuar a Secuencias
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
+              </svg>
+            </button>
+          </div>
         </div>
       )}
     </div>

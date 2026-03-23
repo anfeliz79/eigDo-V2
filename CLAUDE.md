@@ -80,7 +80,7 @@ eigdo-v2/
 # Backend
 cd backend && dotnet build            # Build all projects
 cd backend && dotnet test              # Run all tests
-cd backend/src/Eigdo.Api && dotnet run # Start API (port 5000)
+cd backend/src/Eigdo.Api && dotnet run # Start API (dev: port 5102, prod: port 5000)
 
 # Frontend (each app)
 cd frontend/app && npm run dev         # Dev server (port 3000)
@@ -322,8 +322,8 @@ HMAC-SHA256 of request body with verifier token, compared to `intuit-signature` 
 
 ## Backend Services (Fiscal Engine)
 
-### Controllers (18 total)
-`AuthController`, `OnboardingController`, `QboController`, `QboWebhookController`, `FiscalSettingsController`, `CustomerMappingsController`, `VendorMappingsController`, `TaxMappingsController`, `ItemOverridesController`, `SequencesController`, `DocumentsController`, `EmissionController`, `BillingController`, `DgiiController`, `AdminController`, `SupportController`, `HealthController` + `EigdoControllerBase`
+### Controllers (20 total)
+`AuthController`, `OnboardingController`, `QboController`, `QboWebhookController`, `FiscalSettingsController`, `CustomerMappingsController`, `VendorMappingsController`, `TaxMappingsController`, `ItemOverridesController`, `SequencesController`, `DocumentsController`, `EmissionController`, `BillingController`, `DgiiController`, `AdminController`, `SupportController`, `HealthController`, `CompanyController`, `FieldMappingsController` + `EigdoControllerBase`
 
 ### Application Services
 | Service | Status | Purpose |
@@ -345,6 +345,10 @@ HMAC-SHA256 of request body with verifier token, compared to `intuit-signature` 
 | `RetentionCalculator` | DONE | ITBIS/ISR retention for E41 services |
 | `DiscountDistributor` | DONE | Proportional discount distribution |
 | `QboWebhookHandler` | DONE | HMAC verification, enqueue |
+| `CompanyService` | DONE | Multi-company management, access validation |
+| `FieldMappingService` | DONE | QBO→DGII field equivalence mapping |
+| `QboConfigProvider` | DONE | DB-first config (Client ID, Secret, etc.) with env var fallback |
+| `AlanubeConfigProvider` | DONE | Platform-level Alanube JWT + reseller model |
 
 ### Certificate System
 - `POST /api/FiscalSettings/certificate` — multipart .p12/.pfx upload with X509Certificate2 validation
@@ -477,11 +481,23 @@ Frontend apps need `NEXT_PUBLIC_API_URL` set at BUILD time (not runtime).
 - [x] Documents page with stats, filters, pagination
 - [x] Dashboard with stat cards + recent docs
 - [x] Support tickets (list, detail, reply, create)
-- [x] Admin panel (companies, stats)
+- [x] Admin panel (companies, stats, plans CRUD, tickets, gateways, audit)
+- [x] Admin user management (SuperAdmin, Admin, Support roles)
+- [x] Admin profile page (edit name, change password)
+- [x] Admin QBO config (DB-first with env var fallback, encrypted secrets)
+- [x] Admin Alanube config (reseller model, JWT token, Associated Companies)
 - [x] CI workflow (GitHub Actions)
 - [x] Infra: systemd services, nginx configs, deploy script, backup script
-- [x] 20 frontend pages compiled and working
-- [x] Full documentation (7 docs)
+- [x] 30+ frontend pages compiled and working
+- [x] Full documentation (8 docs)
+- [x] Modern Rorty-style horizontal stepper wizard (pulse animation, confetti, SVG icons)
+- [x] Onboarding navigation lock (OnboardingGuard in layout.tsx — hides sidebar, redirects non-wizard paths)
+- [x] Field mapping: QBO→DGII field equivalence (not record-by-record sync)
+- [x] Plan details card below wizard (fetches subscription info, shows plan name, docs/month, price, status)
+- [x] Multi-company support (CompanySwitcher, X-Company-Id header, company CRUD)
+- [x] Certificate skip with persistent banner (Comprar via ViaFirma, Asistencia WhatsApp, Configurar)
+- [x] Subscription validation before onboarding (blocks without active plan)
+- [x] Landing page with dynamic pricing from API (plans in USD)
 
 ### Completed (Deployment)
 - [x] Deploy to production VPS (LiquidWeb 69.167.167.18) — 2026-03-20

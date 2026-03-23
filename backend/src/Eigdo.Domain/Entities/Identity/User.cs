@@ -18,7 +18,9 @@ public class User : BaseEntity
     public DateTime? LastLoginUtc { get; set; }
 
     /// <summary>
-    /// System-level role. Null for regular users, "SuperAdmin" for platform administrators.
+    /// System-level role. Null for regular users.
+    /// Values: "SuperAdmin" (full platform control), "Admin" (admin panel, cannot manage other Admins),
+    /// "Support" (read-only admin access).
     /// </summary>
     public string? SystemRole { get; set; }
 

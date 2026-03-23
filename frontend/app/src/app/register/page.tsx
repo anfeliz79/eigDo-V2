@@ -4,13 +4,13 @@ import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import Logo from '@/components/Logo';
-import { api, type PlanDto } from '@/lib/api';
+import { api } from '@/lib/api';
 
 // Plan data for immediate display (matches DB seed)
 const PLAN_DETAILS: Record<string, { name: string; price: string; docs: number }> = {
-  basico: { name: 'Basico', price: 'RD$1,500/mes', docs: 100 },
-  profesional: { name: 'Profesional', price: 'RD$3,500/mes', docs: 500 },
-  empresarial: { name: 'Empresarial', price: 'RD$7,500/mes', docs: 2000 },
+  basico: { name: 'Basico', price: '$1,500/mes', docs: 100 },
+  profesional: { name: 'Profesional', price: '$3,500/mes', docs: 500 },
+  empresarial: { name: 'Empresarial', price: '$7,500/mes', docs: 2000 },
 };
 
 function RegisterForm() {
@@ -18,6 +18,16 @@ function RegisterForm() {
   const searchParams = useSearchParams();
   const planSlug = searchParams.get('plan') || '';
   const priceIdParam = searchParams.get('priceId') || '';
+
+  // Redirect to landing if no plan selected
+  const LANDING_URL = process.env.NEXT_PUBLIC_LANDING_URL || '';
+
+  useEffect(() => {
+    if (!planSlug || !priceIdParam) {
+      const landingPlanes = LANDING_URL ? `${LANDING_URL}/#planes` : '/#planes';
+      window.location.href = landingPlanes;
+    }
+  }, [planSlug, priceIdParam, LANDING_URL]);
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -28,16 +38,17 @@ function RegisterForm() {
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState<'form' | 'redirecting'>('form');
 
-  // If no plan selected, load plans from API for selection
-  const [plans, setPlans] = useState<PlanDto[]>([]);
-  const [selectedPriceId, setSelectedPriceId] = useState(priceIdParam);
-  const [selectedPlanSlug, setSelectedPlanSlug] = useState(planSlug);
+  const [selectedPriceId] = useState(priceIdParam);
+  const [selectedPlanSlug] = useState(planSlug);
 
-  useEffect(() => {
-    if (!planSlug) {
-      api.getPlans().then(setPlans).catch(() => {});
-    }
-  }, [planSlug]);
+  // If somehow no plan, show nothing while redirecting
+  if (!planSlug || !priceIdParam) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+      </div>
+    );
+  }
 
   const selectedPlan = PLAN_DETAILS[selectedPlanSlug] || null;
 
@@ -60,9 +71,12 @@ function RegisterForm() {
         companyName,
       });
 
-      // Save auth tokens
+      // Save auth tokens and company ID
       localStorage.setItem('eigdo_token', authRes.accessToken);
       localStorage.setItem('eigdo_user', JSON.stringify(authRes.user));
+      if (authRes.companies && authRes.companies.length > 0) {
+        localStorage.setItem('eigdo_company', authRes.companies[0].companyId);
+      }
 
       setStep('redirecting');
 
@@ -158,43 +172,7 @@ function RegisterForm() {
             <p className="mt-2 text-gray-500">Completa tus datos para comenzar</p>
           </div>
 
-          {/* Plan selector (only if no plan in URL) */}
-          {!planSlug && plans.length > 0 && (
-            <div className="space-y-3">
-              <label className="block text-sm font-medium text-gray-700">Selecciona tu Plan</label>
-              <div className="grid grid-cols-3 gap-3">
-                {plans.map((plan) => {
-                  const monthlyPrice = plan.prices.find(p => p.interval === 'monthly');
-                  if (!monthlyPrice) return null;
-                  const slug = plan.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-                  const isSelected = selectedPriceId === monthlyPrice.id;
-                  return (
-                    <button
-                      key={plan.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedPriceId(monthlyPrice.id);
-                        setSelectedPlanSlug(slug);
-                      }}
-                      className={`p-4 rounded-xl border-2 text-left transition-all ${
-                        isSelected
-                          ? 'border-blue-600 bg-blue-50 ring-1 ring-blue-600'
-                          : 'border-gray-200 bg-white hover:border-gray-300'
-                      }`}
-                    >
-                      <p className={`text-sm font-bold ${isSelected ? 'text-blue-700' : 'text-gray-900'}`}>
-                        {plan.name}
-                      </p>
-                      <p className={`text-lg font-bold mt-1 ${isSelected ? 'text-blue-700' : 'text-gray-900'}`}>
-                        RD${monthlyPrice.amount.toLocaleString('es-DO')}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-1">{plan.includedDocumentsPerMonth} e-CF/mes</p>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+          {/* Plan badge */}
 
           {/* Mobile plan badge */}
           {selectedPlan && (

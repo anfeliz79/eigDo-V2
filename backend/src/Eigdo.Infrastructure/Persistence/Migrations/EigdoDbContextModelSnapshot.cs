@@ -1272,6 +1272,62 @@ namespace Eigdo.Infrastructure.Persistence.Migrations
                     b.ToTable("customer_mappings");
                 });
 
+            modelBuilder.Entity("Eigdo.Domain.Entities.Mapping.FieldMapping", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("entity_type");
+
+                    b.Property<string>("FixedValue")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("fixed_value");
+
+                    b.Property<string>("QboFieldPath")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("qbo_field_path");
+
+                    b.Property<string>("SourceType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("source_type");
+
+                    b.Property<string>("TargetField")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("target_field");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.HasKey("Id")
+                        .HasName("p_k_field_mappings");
+
+                    b.HasIndex("CompanyId", "EntityType", "TargetField")
+                        .IsUnique();
+
+                    b.ToTable("field_mappings");
+                });
+
             modelBuilder.Entity("Eigdo.Domain.Entities.Mapping.ItemOverride", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1443,6 +1499,46 @@ namespace Eigdo.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("vendor_mappings");
+                });
+
+            modelBuilder.Entity("Eigdo.Domain.Entities.Settings.AppSetting", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<bool>("IsSecret")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_secret");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("key");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("value");
+
+                    b.HasKey("Id")
+                        .HasName("p_k_app_settings");
+
+                    b.HasIndex("Key")
+                        .IsUnique();
+
+                    b.ToTable("app_settings");
                 });
 
             modelBuilder.Entity("Eigdo.Domain.Entities.Support.AuditLog", b =>
@@ -1702,6 +1798,11 @@ namespace Eigdo.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<string>("AlanubeCompanyId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("alanube_company_id");
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone")
@@ -2029,6 +2130,18 @@ namespace Eigdo.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("f_k_customer_mappings__companies_company_id");
+
+                    b.Navigation("Company");
+                });
+
+            modelBuilder.Entity("Eigdo.Domain.Entities.Mapping.FieldMapping", b =>
+                {
+                    b.HasOne("Eigdo.Domain.Entities.Tenancy.Company", "Company")
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("f_k_field_mappings__companies_company_id");
 
                     b.Navigation("Company");
                 });

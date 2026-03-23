@@ -204,6 +204,119 @@ All endpoints return `ApiResponse<T>`:
 
 ---
 
+## Gestiones de Empresa (`/api/companies`)
+
+| Method | Path | Auth | Body | Response |
+|--------|------|------|------|----------|
+| GET | `/api/companies` | Yes | — | `CompanyDto[]` |
+| POST | `/api/companies` | Yes | `CreateCompanyRequest` | `CompanyDto` |
+
+**CompanyDto**:
+```json
+{
+  "id": "guid",
+  "name": "Mi Empresa SRL",
+  "rnc": "130123456",
+  "isOnboardingComplete": true,
+  "role": "Owner",
+  "subscriptionStatus": "Active",
+  "planName": "Pro",
+  "hasQboConnection": true
+}
+```
+
+**CreateCompanyRequest**:
+```json
+{
+  "name": "Nueva Empresa SRL"
+}
+```
+
+---
+
+## Mapeo de Campos (`/api/FieldMappings`)
+
+| Method | Path | Auth | Body | Response |
+|--------|------|------|------|----------|
+| GET | `/api/FieldMappings/{entityType}` | Yes | — | `FieldMappingResponse[]` |
+| PUT | `/api/FieldMappings/{entityType}` | Yes | `SaveFieldMappingsRequest` | `FieldMappingResponse[]` |
+
+`entityType` puede ser: `Customer`, `Vendor`, `Item`.
+
+**FieldMappingResponse**:
+```json
+{
+  "id": "guid",
+  "companyId": "guid",
+  "entityType": "Customer",
+  "targetField": "rnc",
+  "sourceType": "QboField",
+  "qboFieldPath": "PrimaryTaxIdentifier",
+  "fixedValue": null,
+  "createdAtUtc": "2026-01-15T10:00:00Z",
+  "updatedAtUtc": null
+}
+```
+
+**SaveFieldMappingsRequest**:
+```json
+{
+  "mappings": [
+    {
+      "targetField": "rnc",
+      "sourceType": "QboField",
+      "qboFieldPath": "PrimaryTaxIdentifier",
+      "fixedValue": null
+    },
+    {
+      "targetField": "tipoPago",
+      "sourceType": "Fixed",
+      "qboFieldPath": null,
+      "fixedValue": "credito"
+    }
+  ]
+}
+```
+
+---
+
+## Perfil de Usuario (`/api/Auth`)
+
+| Method | Path | Auth | Body | Response |
+|--------|------|------|------|----------|
+| GET | `/api/Auth/profile` | Yes | — | `ProfileResponse` |
+| PUT | `/api/Auth/profile` | Yes | `UpdateProfileRequest` | `{ message }` |
+| PUT | `/api/Auth/password` | Yes | `ChangePasswordRequest` | `{ message }` |
+
+**ProfileResponse**:
+```json
+{
+  "firstName": "Juan",
+  "lastName": "Perez",
+  "email": "juan@ejemplo.com",
+  "systemRole": "User",
+  "createdAtUtc": "2026-01-10T08:00:00Z"
+}
+```
+
+**UpdateProfileRequest**:
+```json
+{
+  "firstName": "Juan",
+  "lastName": "Perez"
+}
+```
+
+**ChangePasswordRequest**:
+```json
+{
+  "currentPassword": "contraseña_actual",
+  "newPassword": "nueva_contraseña_8chars"
+}
+```
+
+---
+
 ## Admin (`/api/admin`)
 
 | Method | Path | Auth | Body | Response |
@@ -211,6 +324,117 @@ All endpoints return `ApiResponse<T>`:
 | POST | `/api/admin/login` | No | `{ email, password }` | `{ token }` |
 | GET | `/api/admin/companies` | Admin | — | `Company[]` |
 | GET | `/api/admin/stats` | Admin | — | `AdminStats` |
+
+---
+
+## Admin — Gestion de Usuarios (`/api/admin/users`)
+
+| Method | Path | Auth | Body | Response |
+|--------|------|------|------|----------|
+| GET | `/api/admin/users` | Admin | — | `AdminUserDto[]` |
+| POST | `/api/admin/users` | SuperAdmin/Admin | `CreateAdminUserRequest` | `AdminUserDto` |
+| PUT | `/api/admin/users/{id}` | SuperAdmin/Admin | `UpdateAdminUserRequest` | `AdminUserDto` |
+| DELETE | `/api/admin/users/{id}` | SuperAdmin | — | `{ message }` |
+
+Solo devuelve usuarios con rol administrativo (SuperAdmin, Admin, Support). DELETE no elimina el usuario, lo desactiva (soft delete).
+
+**AdminUserDto**:
+```json
+{
+  "id": "guid",
+  "firstName": "Maria",
+  "lastName": "Lopez",
+  "email": "maria@eigdo.com",
+  "systemRole": "Admin",
+  "createdAtUtc": "2026-01-05T12:00:00Z",
+  "isActive": true
+}
+```
+
+**CreateAdminUserRequest**:
+```json
+{
+  "email": "nuevo@eigdo.com",
+  "firstName": "Carlos",
+  "lastName": "Garcia",
+  "password": "password123",
+  "systemRole": "Support"
+}
+```
+
+**UpdateAdminUserRequest** (todos los campos opcionales):
+```json
+{
+  "firstName": "Carlos",
+  "lastName": "Garcia",
+  "systemRole": "Admin",
+  "isActive": false
+}
+```
+
+---
+
+## Admin — Configuracion Alanube Reseller (`/api/admin/alanube-config`)
+
+| Method | Path | Auth | Body | Response |
+|--------|------|------|------|----------|
+| GET | `/api/admin/alanube-config` | Admin | — | `Dictionary<string, string?>` |
+| PUT | `/api/admin/alanube-config` | SuperAdmin/Admin | `Dictionary<string, string?>` | `{ message }` |
+
+Gestiona la configuracion global del reseller de Alanube. Las claves son: `Alanube:BaseUrl`, `Alanube:JwtToken`, `Alanube:Environment`. Los valores secretos se devuelven enmascarados.
+
+**GET Response**:
+```json
+{
+  "Alanube:BaseUrl": "https://api.alanube.co",
+  "Alanube:JwtToken": "eyJh****abcd",
+  "Alanube:Environment": "production"
+}
+```
+
+**PUT Request** (enviar solo las claves a actualizar; secretos vacios se ignoran):
+```json
+{
+  "Alanube:BaseUrl": "https://api.alanube.co",
+  "Alanube:JwtToken": "nuevo_token_jwt",
+  "Alanube:Environment": "sandbox"
+}
+```
+
+---
+
+## Admin — Configuracion QBO (`/api/admin/qbo-config`)
+
+| Method | Path | Auth | Body | Response |
+|--------|------|------|------|----------|
+| GET | `/api/admin/qbo-config` | Admin | — | `Dictionary<string, string?>` |
+| PUT | `/api/admin/qbo-config` | SuperAdmin/Admin | `Dictionary<string, string?>` | `{ message }` |
+
+Gestiona la configuracion global de la aplicacion QuickBooks Online. Las claves son: `QBO_CLIENT_ID`, `QBO_CLIENT_SECRET`, `QBO_REDIRECT_URI`, `QBO_ENVIRONMENT`, `QBO_WEBHOOK_VERIFIER_TOKEN`, `QBO_SCOPE`. Los valores secretos se devuelven enmascarados.
+
+**GET Response**:
+```json
+{
+  "QBO_CLIENT_ID": "ABcd1234...",
+  "QBO_CLIENT_SECRET": "ABcd****efgh",
+  "QBO_REDIRECT_URI": "https://api.eigdo.com/api/Qbo/callback",
+  "QBO_ENVIRONMENT": "production",
+  "QBO_WEBHOOK_VERIFIER_TOKEN": "abcd****wxyz",
+  "QBO_SCOPE": "com.intuit.quickbooks.accounting"
+}
+```
+
+**PUT Request** (enviar solo las claves a actualizar; secretos vacios se ignoran):
+```json
+{
+  "QBO_CLIENT_ID": "nuevo_client_id",
+  "QBO_CLIENT_SECRET": "nuevo_client_secret",
+  "QBO_REDIRECT_URI": "https://api.eigdo.com/api/Qbo/callback",
+  "QBO_ENVIRONMENT": "sandbox",
+  "QBO_WEBHOOK_VERIFIER_TOKEN": "nuevo_verifier",
+  "QBO_SCOPE": "com.intuit.quickbooks.accounting"
+}
+```
 
 ---
 

@@ -33,6 +33,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await api.login(email, password);
     localStorage.setItem('eigdo_token', res.accessToken);
     localStorage.setItem('eigdo_user', JSON.stringify(res.user));
+    if (res.companies && res.companies.length > 0 && !localStorage.getItem('eigdo_company')) {
+      localStorage.setItem('eigdo_company', res.companies[0].companyId);
+    }
     setToken(res.accessToken);
     setUser(res.user);
   }, []);
@@ -41,6 +44,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await api.register(data);
     localStorage.setItem('eigdo_token', res.accessToken);
     localStorage.setItem('eigdo_user', JSON.stringify(res.user));
+    if (res.companies && res.companies.length > 0) {
+      localStorage.setItem('eigdo_company', res.companies[0].companyId);
+    }
     setToken(res.accessToken);
     setUser(res.user);
   }, []);
@@ -48,6 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     localStorage.removeItem('eigdo_token');
     localStorage.removeItem('eigdo_user');
+    localStorage.removeItem('eigdo_company');
     setToken(null);
     setUser(null);
     window.location.href = '/login';

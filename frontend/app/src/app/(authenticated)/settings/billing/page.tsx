@@ -47,6 +47,7 @@ export default function BillingPage() {
 
   const formatAmount = (amount: number, currency: string) => {
     if (currency === 'DOP') return `RD$${amount.toLocaleString('es-DO')}`;
+    if (currency === 'USD') return `$${amount.toLocaleString('en-US')}`;
     return `$${amount.toLocaleString()}`;
   };
 

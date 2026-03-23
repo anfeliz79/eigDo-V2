@@ -1,9 +1,14 @@
+using System.Security.Claims;
 using System.Text.Json;
+using Eigdo.Application.DTOs.Admin;
 using Eigdo.Application.DTOs.Support;
 using Eigdo.Application.Interfaces;
 using Eigdo.Domain.Entities.Billing;
+using Eigdo.Domain.Entities.Identity;
+using Eigdo.Domain.Entities.Settings;
 using Eigdo.Domain.Entities.Support;
 using Eigdo.Domain.Enums;
+using Eigdo.Domain.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -12,16 +17,34 @@ using Microsoft.Extensions.Configuration;
 namespace Eigdo.Api.Controllers;
 
 [Route("api/admin")]
-[Authorize(Roles = "SuperAdmin")]
+[Authorize(Roles = "SuperAdmin,Admin,Support")]
 public class AdminController : EigdoControllerBase
 {
     private readonly IEigdoDbContext _db;
     private readonly IConfiguration _config;
+    private readonly IEncryptionService _encryption;
 
-    public AdminController(IEigdoDbContext db, IConfiguration config)
+    private static readonly string[] AdminRoles = { "SuperAdmin", "Admin", "Support" };
+
+    public AdminController(IEigdoDbContext db, IConfiguration config, IEncryptionService encryption)
     {
         _db = db;
         _config = config;
+        _encryption = encryption;
+    }
+
+    // ────────── Helpers ──────────
+
+    private string? GetCallerSystemRole()
+        => User.FindFirst(ClaimTypes.Role)?.Value;
+
+    private bool CallerIsSuperAdmin()
+        => GetCallerSystemRole() == "SuperAdmin";
+
+    private bool CallerIsSuperAdminOrAdmin()
+    {
+        var role = GetCallerSystemRole();
+        return role == "SuperAdmin" || role == "Admin";
     }
 
     // ────────── Dashboard Statistics ──────────
@@ -151,6 +174,7 @@ public class AdminController : EigdoControllerBase
     }
 
     [HttpPost("companies/{id:guid}/toggle-active")]
+    [Authorize(Roles = "SuperAdmin,Admin")]
     public async Task<IActionResult> ToggleCompanyActive(Guid id)
     {
         var company = await _db.Companies.FindAsync(id);
@@ -198,6 +222,7 @@ public class AdminController : EigdoControllerBase
     }
 
     [HttpPost("plans")]
+    [Authorize(Roles = "SuperAdmin,Admin")]
     public async Task<IActionResult> CreatePlan([FromBody] CreatePlanRequest request)
     {
         var plan = new Plan
@@ -217,6 +242,7 @@ public class AdminController : EigdoControllerBase
     }
 
     [HttpPut("plans/{id:guid}")]
+    [Authorize(Roles = "SuperAdmin,Admin")]
     public async Task<IActionResult> UpdatePlan(Guid id, [FromBody] UpdatePlanRequest request)
     {
         var plan = await _db.Plans.FindAsync(id);
@@ -235,6 +261,7 @@ public class AdminController : EigdoControllerBase
     }
 
     [HttpDelete("plans/{id:guid}")]
+    [Authorize(Roles = "SuperAdmin,Admin")]
     public async Task<IActionResult> DeletePlan(Guid id)
     {
         var plan = await _db.Plans.FindAsync(id);
@@ -251,6 +278,7 @@ public class AdminController : EigdoControllerBase
     // ────────── Prices CRUD ──────────
 
     [HttpPost("plans/{planId:guid}/prices")]
+    [Authorize(Roles = "SuperAdmin,Admin")]
     public async Task<IActionResult> CreatePrice(Guid planId, [FromBody] CreatePriceRequest request)
     {
         var plan = await _db.Plans.FindAsync(planId);
@@ -272,6 +300,7 @@ public class AdminController : EigdoControllerBase
     }
 
     [HttpPut("prices/{id:guid}")]
+    [Authorize(Roles = "SuperAdmin,Admin")]
     public async Task<IActionResult> UpdatePrice(Guid id, [FromBody] UpdatePriceRequest request)
     {
         var price = await _db.Prices.FindAsync(id);
@@ -288,6 +317,7 @@ public class AdminController : EigdoControllerBase
     }
 
     [HttpDelete("prices/{id:guid}")]
+    [Authorize(Roles = "SuperAdmin,Admin")]
     public async Task<IActionResult> DeletePrice(Guid id)
     {
         var price = await _db.Prices.FindAsync(id);
@@ -389,6 +419,7 @@ public class AdminController : EigdoControllerBase
     }
 
     [HttpPost("tickets/{id:guid}/reply")]
+    [Authorize(Roles = "SuperAdmin,Admin")]
     public async Task<IActionResult> ReplyToTicket(Guid id, [FromBody] AdminReplyRequest request)
     {
         var ticket = await _db.SupportTickets.FindAsync(id);
@@ -414,6 +445,7 @@ public class AdminController : EigdoControllerBase
     }
 
     [HttpPut("tickets/{id:guid}/status")]
+    [Authorize(Roles = "SuperAdmin,Admin")]
     public async Task<IActionResult> UpdateTicketStatus(Guid id, [FromBody] UpdateTicketStatusRequest request)
     {
         var ticket = await _db.SupportTickets.FindAsync(id);
@@ -448,6 +480,7 @@ public class AdminController : EigdoControllerBase
     }
 
     [HttpPut("companies/{companyId:guid}/alanube-config")]
+    [Authorize(Roles = "SuperAdmin,Admin")]
     public async Task<IActionResult> UpdateAlanubeConfig(Guid companyId, [FromBody] UpdateAlanubeConfigRequest request)
     {
         var fs = await _db.FiscalSettings.FirstOrDefaultAsync(f => f.CompanyId == companyId);
@@ -656,6 +689,7 @@ public class AdminController : EigdoControllerBase
     }
 
     [HttpPut("certification-assistance")]
+    [Authorize(Roles = "SuperAdmin,Admin")]
     public async Task<IActionResult> UpdateCertificationAssistanceConfig(
         [FromBody] UpdateCertificationAssistanceConfigRequest request)
     {
@@ -723,6 +757,352 @@ public class AdminController : EigdoControllerBase
             .ToListAsync();
 
         return Ok(items);
+    }
+
+    // ────────── QBO App Configuration ──────────
+
+    private static readonly string[] QboConfigKeys = new[]
+    {
+        "QBO_CLIENT_ID", "QBO_CLIENT_SECRET", "QBO_REDIRECT_URI",
+        "QBO_ENVIRONMENT", "QBO_WEBHOOK_VERIFIER_TOKEN", "QBO_SCOPE"
+    };
+
+    private static readonly HashSet<string> QboSecretKeys = new()
+    {
+        "QBO_CLIENT_SECRET", "QBO_WEBHOOK_VERIFIER_TOKEN"
+    };
+
+    [HttpGet("qbo-config")]
+    public async Task<IActionResult> GetQboConfig()
+    {
+        var dbSettings = await _db.AppSettings
+            .Where(s => QboConfigKeys.Contains(s.Key))
+            .ToListAsync();
+
+        var result = new Dictionary<string, string?>();
+        foreach (var key in QboConfigKeys)
+        {
+            var dbEntry = dbSettings.FirstOrDefault(s => s.Key == key);
+            if (dbEntry != null)
+            {
+                var plainValue = dbEntry.IsSecret
+                    ? _encryption.Decrypt(dbEntry.Value)
+                    : dbEntry.Value;
+
+                result[key] = QboSecretKeys.Contains(key) ? MaskSecret(plainValue) : plainValue;
+            }
+            else
+            {
+                // Fall back to env var / appsettings
+                var envValue = _config.GetValue<string>(key);
+                result[key] = QboSecretKeys.Contains(key) ? MaskSecret(envValue) : envValue;
+            }
+        }
+
+        return Ok(result);
+    }
+
+    [HttpPut("qbo-config")]
+    [Authorize(Roles = "SuperAdmin,Admin")]
+    public async Task<IActionResult> UpdateQboConfig([FromBody] Dictionary<string, string?> settings)
+    {
+        var dbSettings = await _db.AppSettings
+            .Where(s => QboConfigKeys.Contains(s.Key))
+            .ToListAsync();
+
+        foreach (var key in QboConfigKeys)
+        {
+            if (!settings.TryGetValue(key, out var value))
+                continue;
+
+            // Skip null or empty secret fields (means "keep current value")
+            if (QboSecretKeys.Contains(key) && string.IsNullOrEmpty(value))
+                continue;
+
+            var isSecret = QboSecretKeys.Contains(key);
+            var storedValue = isSecret ? _encryption.Encrypt(value!) : value ?? "";
+
+            var existing = dbSettings.FirstOrDefault(s => s.Key == key);
+            if (existing != null)
+            {
+                existing.Value = storedValue;
+                existing.IsSecret = isSecret;
+                existing.UpdatedAtUtc = DateTime.UtcNow;
+            }
+            else
+            {
+                _db.AppSettings.Add(new AppSetting
+                {
+                    Key = key,
+                    Value = storedValue,
+                    IsSecret = isSecret,
+                });
+            }
+        }
+
+        await _db.SaveChangesAsync();
+
+        // Clear cached QBO config so services pick up the new values
+        Eigdo.Infrastructure.Services.QboConfigProvider.ClearCache();
+
+        return Ok(new { message = "Configuracion de QBO actualizada." });
+    }
+
+    // ────────── Alanube Reseller Configuration ──────────
+
+    private static readonly string[] AlanubeConfigKeys = new[]
+    {
+        "Alanube:BaseUrl", "Alanube:JwtToken", "Alanube:Environment"
+    };
+
+    private static readonly HashSet<string> AlanubeSecretKeys = new()
+    {
+        "Alanube:JwtToken"
+    };
+
+    [HttpGet("alanube-config")]
+    public async Task<IActionResult> GetAlanubeResellerConfig()
+    {
+        var dbSettings = await _db.AppSettings
+            .Where(s => AlanubeConfigKeys.Contains(s.Key))
+            .ToListAsync();
+
+        var result = new Dictionary<string, string?>();
+        foreach (var key in AlanubeConfigKeys)
+        {
+            var dbEntry = dbSettings.FirstOrDefault(s => s.Key == key);
+            if (dbEntry != null)
+            {
+                var plainValue = dbEntry.IsSecret
+                    ? _encryption.Decrypt(dbEntry.Value)
+                    : dbEntry.Value;
+
+                result[key] = AlanubeSecretKeys.Contains(key) ? MaskSecret(plainValue) : plainValue;
+            }
+            else
+            {
+                // Fall back to env var / appsettings
+                var envKey = key switch
+                {
+                    "Alanube:BaseUrl" => "ALANUBE_BASE_URL",
+                    "Alanube:JwtToken" => "ALANUBE_JWT_TOKEN",
+                    "Alanube:Environment" => "ALANUBE_ENVIRONMENT",
+                    _ => key
+                };
+                var envValue = _config.GetValue<string>(envKey);
+                result[key] = AlanubeSecretKeys.Contains(key) ? MaskSecret(envValue) : envValue;
+            }
+        }
+
+        return Ok(result);
+    }
+
+    [HttpPut("alanube-config")]
+    [Authorize(Roles = "SuperAdmin,Admin")]
+    public async Task<IActionResult> UpdateAlanubeResellerConfig([FromBody] Dictionary<string, string?> settings)
+    {
+        var dbSettings = await _db.AppSettings
+            .Where(s => AlanubeConfigKeys.Contains(s.Key))
+            .ToListAsync();
+
+        foreach (var key in AlanubeConfigKeys)
+        {
+            if (!settings.TryGetValue(key, out var value))
+                continue;
+
+            // Skip null or empty secret fields (means "keep current value")
+            if (AlanubeSecretKeys.Contains(key) && string.IsNullOrEmpty(value))
+                continue;
+
+            var isSecret = AlanubeSecretKeys.Contains(key);
+            var storedValue = isSecret ? _encryption.Encrypt(value!) : value ?? "";
+
+            var existing = dbSettings.FirstOrDefault(s => s.Key == key);
+            if (existing != null)
+            {
+                existing.Value = storedValue;
+                existing.IsSecret = isSecret;
+                existing.UpdatedAtUtc = DateTime.UtcNow;
+            }
+            else
+            {
+                _db.AppSettings.Add(new AppSetting
+                {
+                    Key = key,
+                    Value = storedValue,
+                    IsSecret = isSecret,
+                });
+            }
+        }
+
+        await _db.SaveChangesAsync();
+
+        // Clear cached Alanube config so services pick up the new values
+        Eigdo.Infrastructure.Services.AlanubeConfigProvider.ClearCache();
+
+        return Ok(new { message = "Configuracion de Alanube (reseller) actualizada." });
+    }
+
+    // ────────── Admin User Management ──────────
+
+    [HttpGet("users")]
+    public async Task<IActionResult> GetAdminUsers()
+    {
+        var users = await _db.Users
+            .Where(u => u.SystemRole != null && AdminRoles.Contains(u.SystemRole))
+            .OrderByDescending(u => u.CreatedAtUtc)
+            .Select(u => new AdminUserDto
+            {
+                Id = u.Id,
+                FirstName = u.FirstName,
+                LastName = u.LastName,
+                Email = u.Email,
+                SystemRole = u.SystemRole!,
+                CreatedAtUtc = u.CreatedAtUtc,
+                IsActive = u.IsActive,
+            })
+            .ToListAsync();
+
+        return Ok(users);
+    }
+
+    [HttpPost("users")]
+    [Authorize(Roles = "SuperAdmin,Admin")]
+    public async Task<IActionResult> CreateAdminUser([FromBody] CreateAdminUserRequest request)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+
+        var requestedRole = request.SystemRole.Trim();
+
+        // Validate role value
+        if (requestedRole != "SuperAdmin" && requestedRole != "Admin" && requestedRole != "Support")
+            return BadRequest(new { message = "Rol invalido. Valores permitidos: SuperAdmin, Admin, Support." });
+
+        // Only SuperAdmin can create Admin or SuperAdmin users
+        if (requestedRole is "Admin" or "SuperAdmin" && !CallerIsSuperAdmin())
+            return Forbid();
+
+        // Admin can only create Support users (already covered above, but explicit)
+        // SuperAdmin can create any role
+
+        var emailNormalized = request.Email.ToLower().Trim();
+
+        if (await _db.Users.AnyAsync(u => u.Email == emailNormalized))
+            return BadRequest(new { message = "Ya existe un usuario con este email." });
+
+        var user = new User
+        {
+            Email = emailNormalized,
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
+            FirstName = request.FirstName.Trim(),
+            LastName = request.LastName.Trim(),
+            SystemRole = requestedRole,
+            EmailConfirmed = true, // Admin-created users are pre-confirmed
+            IsActive = true,
+        };
+
+        _db.Users.Add(user);
+        await _db.SaveChangesAsync();
+
+        return Ok(new AdminUserDto
+        {
+            Id = user.Id,
+            FirstName = user.FirstName,
+            LastName = user.LastName,
+            Email = user.Email,
+            SystemRole = user.SystemRole!,
+            CreatedAtUtc = user.CreatedAtUtc,
+            IsActive = user.IsActive,
+        });
+    }
+
+    [HttpPut("users/{id:guid}")]
+    [Authorize(Roles = "SuperAdmin,Admin")]
+    public async Task<IActionResult> UpdateAdminUser(Guid id, [FromBody] UpdateAdminUserRequest request)
+    {
+        var user = await _db.Users.FirstOrDefaultAsync(u =>
+            u.Id == id && u.SystemRole != null && AdminRoles.Contains(u.SystemRole));
+
+        if (user == null)
+            return NotFound(new { message = "Usuario administrativo no encontrado." });
+
+        // Role change requires SuperAdmin
+        if (request.SystemRole != null)
+        {
+            var newRole = request.SystemRole.Trim();
+
+            if (newRole != "SuperAdmin" && newRole != "Admin" && newRole != "Support")
+                return BadRequest(new { message = "Rol invalido. Valores permitidos: SuperAdmin, Admin, Support." });
+
+            if (!CallerIsSuperAdmin())
+                return Forbid();
+
+            user.SystemRole = newRole;
+        }
+
+        // Admin cannot modify another Admin or SuperAdmin (only Support)
+        if (!CallerIsSuperAdmin() && user.SystemRole is "SuperAdmin" or "Admin")
+            return Forbid();
+
+        if (request.FirstName != null)
+            user.FirstName = request.FirstName.Trim();
+
+        if (request.LastName != null)
+            user.LastName = request.LastName.Trim();
+
+        if (request.IsActive.HasValue)
+        {
+            // Only SuperAdmin can deactivate Admin/SuperAdmin users
+            if (user.SystemRole is "SuperAdmin" or "Admin" && !CallerIsSuperAdmin())
+                return Forbid();
+
+            user.IsActive = request.IsActive.Value;
+        }
+
+        user.UpdatedAtUtc = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        return Ok(new AdminUserDto
+        {
+            Id = user.Id,
+            FirstName = user.FirstName,
+            LastName = user.LastName,
+            Email = user.Email,
+            SystemRole = user.SystemRole!,
+            CreatedAtUtc = user.CreatedAtUtc,
+            IsActive = user.IsActive,
+        });
+    }
+
+    [HttpDelete("users/{id:guid}")]
+    [Authorize(Roles = "SuperAdmin")]
+    public async Task<IActionResult> DeactivateAdminUser(Guid id)
+    {
+        var callerId = GetUserId();
+        if (callerId.HasValue && callerId.Value == id)
+            return BadRequest(new { message = "No puedes desactivar tu propia cuenta." });
+
+        var user = await _db.Users.FirstOrDefaultAsync(u =>
+            u.Id == id && u.SystemRole != null && AdminRoles.Contains(u.SystemRole));
+
+        if (user == null)
+            return NotFound(new { message = "Usuario administrativo no encontrado." });
+
+        user.IsActive = false;
+        user.UpdatedAtUtc = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        return Ok(new { message = "Usuario desactivado exitosamente." });
+    }
+
+    // ────────── Private Helpers ──────────
+
+    private static string? MaskSecret(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return null;
+        if (value.Length <= 8) return new string('*', value.Length);
+        return value[..4] + new string('*', value.Length - 8) + value[^4..];
     }
 
     private static string? MaskApiKey(string? key)

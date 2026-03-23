@@ -12,11 +12,13 @@ public class BillingController : EigdoControllerBase
 {
     private readonly CheckoutService _checkoutService;
     private readonly SubscriptionService _subscriptionService;
+    private readonly CompanyService _companyService;
 
-    public BillingController(CheckoutService checkoutService, SubscriptionService subscriptionService)
+    public BillingController(CheckoutService checkoutService, SubscriptionService subscriptionService, CompanyService companyService)
     {
         _checkoutService = checkoutService;
         _subscriptionService = subscriptionService;
+        _companyService = companyService;
     }
 
     /// <summary>
@@ -37,11 +39,23 @@ public class BillingController : EigdoControllerBase
     [Authorize]
     public async Task<IActionResult> CreateCheckout([FromBody] CreateCheckoutRequest request, CancellationToken ct)
     {
-        var companyId = GetCompanyId();
         var userId = GetUserId();
+        if (userId == null)
+            return Unauthorized(ApiResponse<CheckoutSessionDto>.Fail("Usuario no identificado."));
 
-        if (companyId == null || userId == null)
+        // Usar companyId del request si se provee, sino la empresa activa
+        var companyId = request.CompanyId ?? GetCompanyId();
+
+        if (companyId == null)
             return Unauthorized(ApiResponse<CheckoutSessionDto>.Fail("Empresa no identificada."));
+
+        // Validar que el usuario tiene acceso a la empresa
+        if (request.CompanyId != null)
+        {
+            var hasAccess = await _companyService.UserHasAccessAsync(userId.Value, companyId.Value, ct);
+            if (!hasAccess)
+                return Unauthorized(ApiResponse<CheckoutSessionDto>.Fail("No tienes acceso a esta empresa."));
+        }
 
         var (session, error) = await _checkoutService.CreateCheckoutSessionAsync(
             companyId.Value, userId.Value, request, ct);
@@ -117,6 +131,26 @@ public class BillingController : EigdoControllerBase
             return BadRequest(ApiResponse<BillingPortalDto>.Fail(error));
 
         return Ok(ApiResponse<BillingPortalDto>.Ok(portal!));
+    }
+
+    /// <summary>
+    /// Confirm a checkout session after Stripe payment.
+    /// Called from the success page to ensure the subscription is created
+    /// even if the webhook hasn't arrived yet.
+    /// </summary>
+    [HttpPost("confirm-checkout")]
+    [Authorize]
+    public async Task<IActionResult> ConfirmCheckout([FromBody] ConfirmCheckoutRequest request, CancellationToken ct)
+    {
+        var companyId = GetCompanyId();
+        if (companyId == null)
+            return Unauthorized(ApiResponse<string>.Fail("Empresa no identificada."));
+
+        var (result, error) = await _checkoutService.ConfirmCheckoutSessionAsync(companyId.Value, request.SessionId, ct);
+        if (error != null)
+            return BadRequest(ApiResponse<string>.Fail(error));
+
+        return Ok(ApiResponse<string>.Ok("Suscripcion activada."));
     }
 
     /// <summary>

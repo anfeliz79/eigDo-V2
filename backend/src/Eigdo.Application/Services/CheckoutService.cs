@@ -483,6 +483,101 @@ public class CheckoutService
     }
 
     /// <summary>
+    /// Confirm a checkout session after payment. If the subscription doesn't exist yet
+    /// (webhook hasn't arrived), retrieves the session from Stripe and creates it.
+    /// </summary>
+    public async Task<(bool Success, string? Error)> ConfirmCheckoutSessionAsync(
+        Guid companyId, string sessionId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId))
+            return (false, "Session ID requerido.");
+
+        var billingAccount = await _db.BillingAccounts
+            .Include(ba => ba.Subscriptions)
+            .FirstOrDefaultAsync(ba => ba.CompanyId == companyId, ct);
+
+        if (billingAccount == null)
+            return (false, "Cuenta de facturacion no encontrada.");
+
+        // Already has active subscription — nothing to do
+        var hasActive = billingAccount.Subscriptions.Any(s =>
+            s.Status == SubscriptionStatus.Active || s.Status == SubscriptionStatus.Trial);
+        if (hasActive)
+            return (true, null);
+
+        // Handle sandbox sessions
+        if (sessionId.StartsWith("sandbox_"))
+        {
+            // Sandbox checkout already creates subscription in SimulateSandboxCheckoutAsync
+            // If we're here, it means something went wrong — just return success
+            return (true, null);
+        }
+
+        // Verify with Stripe
+        var stripeSecretKey = _config.GetValue<string>("STRIPE_SECRET_KEY");
+        if (string.IsNullOrEmpty(stripeSecretKey))
+            return (false, "Stripe no esta configurado.");
+
+        Stripe.StripeConfiguration.ApiKey = stripeSecretKey;
+
+        try
+        {
+            var sessionService = new Stripe.Checkout.SessionService();
+            var session = await sessionService.GetAsync(sessionId, cancellationToken: ct);
+
+            if (session.PaymentStatus != "paid")
+                return (false, "El pago no ha sido completado.");
+
+            // Find the price from the session
+            var lineItems = await sessionService.ListLineItemsAsync(sessionId, cancellationToken: ct);
+            var stripePriceId = lineItems.Data.FirstOrDefault()?.Price?.Id;
+
+            // Find matching price in our DB
+            var price = stripePriceId != null
+                ? await _db.Prices.Include(p => p.Plan).FirstOrDefaultAsync(p => p.StripeId == stripePriceId, ct)
+                : null;
+
+            // Fallback: use the first available plan
+            if (price == null)
+            {
+                price = await _db.Prices.Include(p => p.Plan)
+                    .Where(p => p.IsActive && p.Interval == "monthly")
+                    .OrderBy(p => p.Plan.SortOrder)
+                    .FirstOrDefaultAsync(ct);
+            }
+
+            if (price == null)
+                return (false, "No se encontro el plan correspondiente.");
+
+            // Create subscription
+            var subscription = new Subscription
+            {
+                Id = Guid.NewGuid(),
+                BillingAccountId = billingAccount.Id,
+                PlanId = price.PlanId,
+                PriceId = price.Id,
+                Status = SubscriptionStatus.Active,
+                StartDateUtc = DateTime.UtcNow,
+                CurrentPeriodStartUtc = DateTime.UtcNow,
+                CurrentPeriodEndUtc = DateTime.UtcNow.AddMonths(price.Interval == "yearly" ? 12 : 1),
+                StripeSubscriptionId = session.SubscriptionId ?? $"confirmed_{sessionId[..8]}",
+                DocumentsEmittedThisPeriod = 0,
+                Gateway = PaymentGateway.Stripe,
+                CreatedAtUtc = DateTime.UtcNow
+            };
+
+            _db.Subscriptions.Add(subscription);
+            await _db.SaveChangesAsync(ct);
+
+            return (true, null);
+        }
+        catch (Stripe.StripeException ex)
+        {
+            return (false, $"Error al verificar con Stripe: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Create a Stripe Billing Portal session for managing subscriptions.
     /// </summary>
     public async Task<(BillingPortalDto? Portal, string? Error)> CreateBillingPortalAsync(

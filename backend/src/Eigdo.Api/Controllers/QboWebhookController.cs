@@ -1,4 +1,5 @@
 using Eigdo.Application.Services;
+using Eigdo.Domain.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -14,13 +15,13 @@ namespace Eigdo.Api.Controllers;
 public class QboWebhookController : ControllerBase
 {
     private readonly QboWebhookHandler _handler;
-    private readonly IConfiguration _config;
+    private readonly IQboConfigProvider _qboConfig;
     private readonly ILogger<QboWebhookController> _logger;
 
-    public QboWebhookController(QboWebhookHandler handler, IConfiguration config, ILogger<QboWebhookController> logger)
+    public QboWebhookController(QboWebhookHandler handler, IQboConfigProvider qboConfig, ILogger<QboWebhookController> logger)
     {
         _handler = handler;
-        _config = config;
+        _qboConfig = qboConfig;
         _logger = logger;
     }
 
@@ -46,7 +47,7 @@ public class QboWebhookController : ControllerBase
         }
 
         // Verify HMAC-SHA256 signature
-        var verifierToken = _config.GetValue<string>("QBO_WEBHOOK_VERIFIER_TOKEN");
+        var verifierToken = await _qboConfig.GetWebhookVerifierTokenAsync();
         if (string.IsNullOrEmpty(verifierToken))
         {
             _logger.LogError("QBO_WEBHOOK_VERIFIER_TOKEN is not configured");

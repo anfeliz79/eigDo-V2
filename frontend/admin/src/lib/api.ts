@@ -67,6 +67,25 @@ class AdminApiClient {
     });
   }
 
+  // Profile
+  async getProfile() {
+    return this.request<ProfileResponse>('/auth/profile');
+  }
+
+  async updateProfile(data: UpdateProfileRequest) {
+    return this.request<{ message: string }>('/auth/profile', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async changePassword(data: ChangePasswordRequest) {
+    return this.request<{ message: string }>('/auth/password', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
   // Dashboard stats
   async getStats() {
     return this.request<AdminStats>('/admin/stats');
@@ -186,6 +205,53 @@ class AdminApiClient {
   // Payment Gateways
   async getPaymentGateways() {
     return this.request<{ gateways: PaymentGateway[] }>('/admin/payment-gateways');
+  }
+
+  // QBO App Config
+  async getQboConfig() {
+    return this.request<QboAppConfig>('/admin/qbo-config');
+  }
+
+  async updateQboConfig(data: QboAppConfigUpdate) {
+    return this.request<{ message: string }>('/admin/qbo-config', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Platform Alanube Config
+  async getPlatformAlanubeConfig() {
+    return this.request<PlatformAlanubeConfig>('/admin/alanube-config');
+  }
+
+  async updatePlatformAlanubeConfig(data: Partial<PlatformAlanubeConfig>) {
+    return this.request<{ message: string }>('/admin/alanube-config', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Admin Users
+  async getAdminUsers() {
+    return this.request<AdminUser[]>('/admin/users');
+  }
+
+  async createAdminUser(data: CreateAdminUserData) {
+    return this.request<{ id: string }>('/admin/users', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateAdminUser(id: string, data: UpdateAdminUserData) {
+    return this.request<{ id: string }>(`/admin/users/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteAdminUser(id: string) {
+    return this.request<{ message: string }>(`/admin/users/${id}`, { method: 'DELETE' });
   }
 
   // Audit logs
@@ -402,11 +468,79 @@ export interface AuditLogParams {
   to?: string;
 }
 
+export interface QboAppConfig {
+  QBO_CLIENT_ID?: string | null;
+  QBO_CLIENT_SECRET?: string | null;
+  QBO_REDIRECT_URI?: string | null;
+  QBO_ENVIRONMENT?: string | null;
+  QBO_WEBHOOK_VERIFIER_TOKEN?: string | null;
+  QBO_SCOPE?: string | null;
+}
+
+export interface QboAppConfigUpdate {
+  QBO_CLIENT_ID?: string | null;
+  QBO_CLIENT_SECRET?: string | null;
+  QBO_REDIRECT_URI?: string | null;
+  QBO_ENVIRONMENT?: string | null;
+  QBO_WEBHOOK_VERIFIER_TOKEN?: string | null;
+  QBO_SCOPE?: string | null;
+}
+
+export interface PlatformAlanubeConfig {
+  baseUrl: string;
+  jwtToken: string; // masked in GET
+  environment: string; // "Sandbox" or "Production"
+}
+
+export interface AdminUser {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  systemRole: string;
+  createdAtUtc: string;
+  isActive: boolean;
+}
+
+export interface CreateAdminUserData {
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+  systemRole: string;
+}
+
+export interface UpdateAdminUserData {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  systemRole?: string;
+  isActive?: boolean;
+}
+
 export interface PaginatedResult<T> {
   items: T[];
   total: number;
   page: number;
   pageSize: number;
+}
+
+export interface ProfileResponse {
+  firstName: string;
+  lastName: string;
+  email: string;
+  systemRole: string | null;
+  createdAtUtc: string;
+}
+
+export interface UpdateProfileRequest {
+  firstName: string;
+  lastName: string;
+}
+
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
 }
 
 export const adminApi = new AdminApiClient(API_BASE);

@@ -23,18 +23,26 @@ public class QboController : EigdoControllerBase
     private readonly IEigdoDbContext _db;
     private readonly IAuditService _audit;
     private readonly IConfiguration _config;
+    private readonly IQboConfigProvider _qboConfig;
     private readonly ILogger<QboController> _logger;
 
-    public QboController(IQboClient qboClient, IEigdoDbContext db, IAuditService audit, IConfiguration config, ILogger<QboController> logger)
+    public QboController(IQboClient qboClient, IEigdoDbContext db, IAuditService audit, IConfiguration config, IQboConfigProvider qboConfig, ILogger<QboController> logger)
     {
         _qboClient = qboClient;
         _db = db;
         _audit = audit;
         _config = config;
+        _qboConfig = qboConfig;
         _logger = logger;
     }
 
     private bool IsSandboxMode => string.IsNullOrEmpty(_config.GetValue<string>("QBO_CLIENT_ID"));
+
+    private async Task<bool> IsSandboxModeAsync()
+    {
+        var clientId = await _qboConfig.GetClientIdAsync();
+        return string.IsNullOrEmpty(clientId);
+    }
 
     /// <summary>
     /// Get the OAuth 2.0 authorization URL to redirect the user to Intuit.
@@ -46,18 +54,35 @@ public class QboController : EigdoControllerBase
         var companyId = GetCompanyId();
         if (companyId == null) return Unauthorized(ApiResponse<string>.Fail("Empresa no identificada."));
 
-        if (IsSandboxMode)
+        if (await IsSandboxModeAsync())
         {
             // In sandbox mode, point to our sandbox-connect endpoint
-            var appUrl = _config.GetValue<string>("APP_URL") ?? "http://localhost:3002";
+            var baseUrl = $"{Request.Scheme}://{Request.Host}";
             return Ok(ApiResponse<object>.Ok(new
             {
-                authUrl = $"http://localhost:5102/api/qbo/sandbox-connect?companyId={companyId.Value}",
+                authUrl = $"{baseUrl}/api/qbo/sandbox-connect?companyId={companyId.Value}",
                 sandbox = true
             }));
         }
 
-        var redirectUri = _config.GetValue<string>("QBO_REDIRECT_URI") ?? "http://localhost:5102/api/qbo/callback";
+        var clientId = await _qboConfig.GetClientIdAsync();
+        var redirectUri = await _qboConfig.GetRedirectUriAsync();
+
+        if (string.IsNullOrEmpty(redirectUri))
+        {
+            return BadRequest(ApiResponse<object>.Fail(
+                "La URL de callback (Redirect URI) no esta configurada. " +
+                "Pidele al administrador que la configure en Admin > Config QBO > URI de Redireccion. " +
+                "Ejemplo: https://tudominio.com/api/qbo/callback"));
+        }
+
+        if (string.IsNullOrEmpty(clientId))
+        {
+            return BadRequest(ApiResponse<object>.Fail(
+                "El Client ID de QuickBooks no esta configurado. " +
+                "Pidele al administrador que lo configure en Admin > Config QBO."));
+        }
+
         var url = await _qboClient.GetAuthorizationUrlAsync(companyId.Value, redirectUri);
 
         return Ok(ApiResponse<object>.Ok(new { authUrl = url }));
@@ -71,7 +96,7 @@ public class QboController : EigdoControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> SandboxConnect([FromQuery] Guid companyId, CancellationToken ct)
     {
-        if (!IsSandboxMode)
+        if (!await IsSandboxModeAsync())
             return BadRequest(ApiResponse<string>.Fail("Sandbox mode no esta activo."));
 
         var sandboxRealmId = $"sandbox_{Guid.NewGuid():N}".Substring(0, 20);
@@ -143,11 +168,43 @@ public class QboController : EigdoControllerBase
             return BadRequest(ApiResponse<string>.Fail("Parametro de estado invalido."));
         }
 
-        var redirectUri = _config.GetValue<string>("QBO_REDIRECT_URI") ?? "http://localhost:5102/api/qbo/callback";
+        var redirectUri = await _qboConfig.GetRedirectUriAsync();
+
+        if (string.IsNullOrEmpty(redirectUri))
+        {
+            _logger.LogError("QBO callback failed: QBO_REDIRECT_URI is not configured");
+            return BadRequest(ApiResponse<object>.Fail("Error de configuracion: la URL de callback (QBO_REDIRECT_URI) no esta configurada. " +
+                "Configure la URI de redireccion en el panel de administracion (Admin > Config QBO) o en la variable de entorno QBO_REDIRECT_URI. " +
+                "La URL debe coincidir exactamente con la configurada en la app de Intuit Developer: https://developer.intuit.com"));
+        }
+
         var result = await _qboClient.ExchangeCodeAsync(code, realmId, redirectUri, ct);
 
         if (!result.Success)
-            return BadRequest(ApiResponse<string>.Fail(result.Error ?? "Error al intercambiar tokens."));
+        {
+            var errorDetail = result.Error ?? "Error desconocido";
+            _logger.LogError("QBO token exchange failed. RedirectUri={RedirectUri}, Error={Error}", redirectUri, errorDetail);
+
+            // Detect common callback URL issues
+            var errorMessage = errorDetail.ToLowerInvariant() switch
+            {
+                var e when e.Contains("redirect_uri") || e.Contains("redirect uri") || e.Contains("invalid_grant") =>
+                    $"Error de callback de QuickBooks: la URL de redireccion no coincide. " +
+                    $"URL configurada en eigdo: {redirectUri}. " +
+                    $"Asegurese de que esta URL este registrada exactamente igual en su app de Intuit Developer " +
+                    $"(https://developer.intuit.com > Dashboard > su app > Keys & credentials > Redirect URIs). " +
+                    $"Detalle del error: {errorDetail}",
+                var e when e.Contains("unauthorized") || e.Contains("invalid_client") =>
+                    $"Error de autenticacion con QuickBooks: las credenciales de la app (Client ID / Client Secret) son invalidas o estan expiradas. " +
+                    $"Verifique la configuracion en Admin > Config QBO. Detalle: {errorDetail}",
+                _ => $"Error al conectar con QuickBooks. Detalle: {errorDetail}. " +
+                    $"URL de callback configurada: {redirectUri}. " +
+                    $"Si el problema persiste, verifique que la URL de callback este correctamente configurada en Intuit Developer " +
+                    $"y en Admin > Config QBO."
+            };
+
+            return BadRequest(ApiResponse<string>.Fail(errorMessage));
+        }
 
         // Save or update connection
         var existing = await _db.QboConnections.FirstOrDefaultAsync(q => q.CompanyId == companyId, ct);
@@ -201,11 +258,12 @@ public class QboController : EigdoControllerBase
         var companyId = GetCompanyId();
         if (companyId == null) return Unauthorized(ApiResponse<string>.Fail("Empresa no identificada."));
 
+        var isSandbox = await IsSandboxModeAsync();
         var connection = await _db.QboConnections
             .FirstOrDefaultAsync(q => q.CompanyId == companyId.Value && q.IsActive, ct);
 
         if (connection == null)
-            return Ok(ApiResponse<object>.Ok(new { connected = false, sandbox = IsSandboxMode }));
+            return Ok(ApiResponse<object>.Ok(new { connected = false, sandbox = isSandbox }));
 
         return Ok(ApiResponse<object>.Ok(new
         {
@@ -214,7 +272,7 @@ public class QboController : EigdoControllerBase
             accessTokenExpires = connection.AccessTokenExpiresUtc,
             refreshTokenExpires = connection.RefreshTokenExpiresUtc,
             lastSync = connection.LastSyncUtc,
-            sandbox = IsSandboxMode
+            sandbox = isSandbox
         }));
     }
 
@@ -233,13 +291,14 @@ public class QboController : EigdoControllerBase
         var connection = await _db.QboConnections
             .FirstOrDefaultAsync(q => q.CompanyId == companyId.Value && q.IsActive, ct);
 
+        var isSandbox = await IsSandboxModeAsync();
         _logger.LogInformation("QBO company-info: connection found={Found}, isSandbox={Sandbox}",
-            connection != null, IsSandboxMode);
+            connection != null, isSandbox);
 
         if (connection == null)
             return NotFound(ApiResponse<string>.Fail("No hay conexion activa con QuickBooks."));
 
-        if (IsSandboxMode)
+        if (isSandbox)
         {
             // Return simulated data in sandbox mode
             var sandboxInfo = new QboCompanyInfoDto
@@ -449,6 +508,115 @@ public class QboController : EigdoControllerBase
     #endregion
 
     /// <summary>
+    /// Retorna 1 registro de ejemplo de un cliente QBO con todos los campos disponibles.
+    /// En modo sandbox, retorna datos hardcoded representativos.
+    /// </summary>
+    [HttpGet("sample/customer")]
+    public async Task<IActionResult> GetSampleCustomer(CancellationToken ct)
+    {
+        var companyId = GetCompanyId();
+        if (companyId == null) return Unauthorized(ApiResponse<string>.Fail("Empresa no identificada."));
+
+        var isSandbox = await IsSandboxModeAsync();
+
+        if (isSandbox)
+        {
+            var sample = new
+            {
+                id = "42",
+                displayName = "Comercial El Sol",
+                fields = new Dictionary<string, string>
+                {
+                    ["DisplayName"] = "Comercial El Sol",
+                    ["CompanyName"] = "Comercial El Sol SRL",
+                    ["TaxIdentifier"] = "131000000",
+                    ["PrimaryEmailAddr"] = "info@elsol.com.do",
+                    ["PrimaryPhone"] = "809-555-1234",
+                    ["BillAddr.Line1"] = "Av. Winston Churchill 1099",
+                    ["BillAddr.City"] = "Santo Domingo",
+                    ["Notes"] = "",
+                    ["CustomField.1"] = ""
+                }
+            };
+            return Ok(ApiResponse<object>.Ok(sample));
+        }
+
+        // TODO: Implementar consulta real a QBO para obtener 1 customer de ejemplo
+        return BadRequest(ApiResponse<string>.Fail("Consulta de muestra en modo produccion aun no implementada."));
+    }
+
+    /// <summary>
+    /// Retorna 1 registro de ejemplo de un proveedor QBO con todos los campos disponibles.
+    /// </summary>
+    [HttpGet("sample/vendor")]
+    public async Task<IActionResult> GetSampleVendor(CancellationToken ct)
+    {
+        var companyId = GetCompanyId();
+        if (companyId == null) return Unauthorized(ApiResponse<string>.Fail("Empresa no identificada."));
+
+        var isSandbox = await IsSandboxModeAsync();
+
+        if (isSandbox)
+        {
+            var sample = new
+            {
+                id = "15",
+                displayName = "Suplidora ABC",
+                fields = new Dictionary<string, string>
+                {
+                    ["DisplayName"] = "Suplidora ABC",
+                    ["CompanyName"] = "Suplidora ABC SRL",
+                    ["TaxIdentifier"] = "101234567",
+                    ["PrimaryEmailAddr"] = "ventas@abc.com.do",
+                    ["PrimaryPhone"] = "809-555-5678",
+                    ["BillAddr.Line1"] = "Calle El Conde 100",
+                    ["BillAddr.City"] = "Santiago",
+                    ["Notes"] = "",
+                    ["CustomField.1"] = ""
+                }
+            };
+            return Ok(ApiResponse<object>.Ok(sample));
+        }
+
+        return BadRequest(ApiResponse<string>.Fail("Consulta de muestra en modo produccion aun no implementada."));
+    }
+
+    /// <summary>
+    /// Retorna 1 registro de ejemplo de un item QBO con todos los campos disponibles.
+    /// </summary>
+    [HttpGet("sample/item")]
+    public async Task<IActionResult> GetSampleItem(CancellationToken ct)
+    {
+        var companyId = GetCompanyId();
+        if (companyId == null) return Unauthorized(ApiResponse<string>.Fail("Empresa no identificada."));
+
+        var isSandbox = await IsSandboxModeAsync();
+
+        if (isSandbox)
+        {
+            var sample = new
+            {
+                id = "7",
+                displayName = "Servicio de Consultoria",
+                fields = new Dictionary<string, string>
+                {
+                    ["Name"] = "Servicio de Consultoria",
+                    ["Description"] = "Horas de consultoria profesional",
+                    ["Type"] = "Service",
+                    ["UnitPrice"] = "5000.00",
+                    ["Sku"] = "CONS-001",
+                    ["Active"] = "true",
+                    ["Taxable"] = "true",
+                    ["CustomField.1"] = ""
+                }
+            };
+            return Ok(ApiResponse<object>.Ok(sample));
+        }
+
+        return BadRequest(ApiResponse<string>.Fail("Consulta de muestra en modo produccion aun no implementada."));
+    }
+
+    /// <summary>
     /// Sync customers, vendors, tax codes and items from QBO (or sandbox data).
     /// Creates mapping stubs that the user then fills in with fiscal data.
     /// </summary>
@@ -461,13 +629,15 @@ public class QboController : EigdoControllerBase
         var connection = await _db.QboConnections
             .FirstOrDefaultAsync(q => q.CompanyId == companyId.Value && q.IsActive, ct);
 
+        var isSandbox = await IsSandboxModeAsync();
+
         // In sandbox mode, allow sync even without QBO connection
-        if (connection == null && !IsSandboxMode)
+        if (connection == null && !isSandbox)
             return NotFound(ApiResponse<string>.Fail("No hay conexion activa con QuickBooks."));
 
         int customersAdded = 0, vendorsAdded = 0, taxCodesAdded = 0, itemsAdded = 0;
 
-        if (IsSandboxMode)
+        if (isSandbox)
         {
             // Generate sandbox data
             var sandboxCustomers = new[]

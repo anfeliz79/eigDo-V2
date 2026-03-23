@@ -23,8 +23,17 @@ public class PriceDto
 public class CreateCheckoutRequest
 {
     public Guid PriceId { get; set; }
+    /// <summary>
+    /// Empresa destino del checkout. Si no se provee, se usa la empresa activa del usuario.
+    /// </summary>
+    public Guid? CompanyId { get; set; }
     public string? SuccessUrl { get; set; }
     public string? CancelUrl { get; set; }
+}
+
+public class ConfirmCheckoutRequest
+{
+    public string SessionId { get; set; } = string.Empty;
 }
 
 public class CheckoutSessionDto

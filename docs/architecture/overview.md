@@ -58,7 +58,7 @@ Eigdo.Infrastructure (EF Core, External APIs, Encryption)
 Eigdo.SharedKernel (Cross-cutting utilities)
 ```
 
-### Controllers (18)
+### Controllers (20)
 | Controller | Route | Purpose |
 |-----------|-------|---------|
 | AuthController | `/api/Auth` | Login, register, refresh, verify email |
@@ -76,6 +76,8 @@ Eigdo.SharedKernel (Cross-cutting utilities)
 | BillingController | `/api/billing` | Plans, checkout, subscription |
 | DgiiController | `/api/Dgii` | RNC lookup, certification assistance |
 | AdminController | `/api/admin` | SuperAdmin operations |
+| CompanyController | `/api/Company` | CRUD multi-company, validacion de acceso |
+| FieldMappingsController | `/api/FieldMappings` | Equivalencia de campos QBO→DGII |
 | SupportController | `/api/Support` | Support tickets |
 | HealthController | `/health` | Health checks |
 
@@ -99,6 +101,10 @@ Eigdo.SharedKernel (Cross-cutting utilities)
 | RetentionCalculator | ITBIS/ISR retention for E41 |
 | DiscountDistributor | Proportional discount distribution |
 | QboWebhookHandler | HMAC verification + enqueue |
+| CompanyService | Gestion multi-company (CRUD, acceso, switching) |
+| FieldMappingService | Resolucion de equivalencia de campos QBO→DGII |
+| QboConfigProvider | Configuracion QBO desde DB con fallback a env vars |
+| AlanubeConfigProvider | Configuracion JWT de Alanube a nivel de plataforma |
 
 ## Data Flow: Invoice Emission
 
@@ -141,3 +147,69 @@ Eigdo.SharedKernel (Cross-cutting utilities)
 | Rate limiting | Per-IP: 100/min global, 10/min auth, 500/min webhooks |
 | Firewall | UFW: only ports 22, 80, 443 |
 | Secrets | EnvironmentFile in systemd, never in code |
+
+## Panel de Administracion
+
+El panel de administracion (`admin.eigdo.com`) permite gestionar la plataforma a nivel global.
+
+### Jerarquia de Roles
+
+| Rol | Alcance |
+|-----|---------|
+| SuperAdmin | Acceso total: gestion de usuarios, configuracion de plataforma, operaciones globales |
+| Admin | Gestion de usuarios y soporte, sin acceso a configuracion de plataforma |
+| Support | Solo lectura: consulta de tickets y estado de companias |
+
+### Funcionalidades
+
+- **Gestion de usuarios admin**: CRUD de usuarios del panel con asignacion de roles
+- **Configuracion a nivel de plataforma**: OAuth de QBO (Client ID, Client Secret), credenciales reseller de Alanube (JWT)
+- **Configuracion por compania**: Alanube Company ID asociado a cada compania registrada
+
+## Soporte Multi-Company
+
+El sistema soporta multiples companias por usuario, permitiendo que un contador o firma maneje varias entidades desde una sola cuenta.
+
+### Mecanismo de Switching
+
+- El header `X-Company-Id` identifica la compania activa en cada request al API
+- El frontend incluye un componente `CompanySwitcher` que permite cambiar de compania sin cerrar sesion
+- Todas las operaciones (mappings, emisiones, documentos) se ejecutan en el contexto de la compania seleccionada
+
+### Flujo de Creacion de Compania
+
+1. El usuario inicia la creacion desde el `CompanySwitcher` o el dashboard
+2. Se capturan los datos fiscales basicos (RNC, razon social)
+3. Se vincula un plan de facturacion via Stripe/Azul
+4. La compania queda disponible para seleccion y comienza su onboarding independiente
+
+## Field Mapping (Equivalencia de Campos)
+
+El Field Mapping define la equivalencia entre campos de QuickBooks Online y campos requeridos por la DGII. **No es una sincronizacion registro por registro**, sino un mapeo que indica como traducir cada campo del documento QBO al formato e-CF de Alanube.
+
+### Tipos de Entidad
+
+| Entidad | Descripcion |
+|---------|-------------|
+| Customer | Campos del comprador (RNC, tipo contribuyente, etc.) |
+| Vendor | Campos del suplidor (RNC, tipo retencion, etc.) |
+| Item | Campos del item/servicio (codigo DGII, unidad de medida, etc.) |
+
+### Tipos de Fuente (Source)
+
+| Tipo | Comportamiento |
+|------|---------------|
+| QboField | Valor dinamico: se lee de un campo especifico del registro en QBO (ej: `CustomField.RNC`) |
+| Fixed | Valor fijo: se aplica el mismo valor a todos los registros (ej: siempre `01` para tipo persona) |
+
+### Ejemplo de Resolucion
+
+```
+Campo DGII: rnc_cedula
+  └── Source: QboField → "DisplayName.Split('|')[1]"
+
+Campo DGII: tipo_persona
+  └── Source: Fixed → "01"
+```
+
+El `FieldMappingService` resuelve estos mappings al momento de transformar cada documento, extrayendo el valor del campo QBO indicado o aplicando el valor fijo configurado.
