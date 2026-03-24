@@ -261,6 +261,13 @@ class ApiClient {
     return this.request<CertificationAssistanceConfig>('/Dgii/certification-assistance');
   }
 
+  async resolveRnc(name: string, maskedTaxId?: string) {
+    return this.request<ResolveRncResponse>('/Dgii/resolve-rnc', {
+      method: 'POST',
+      body: JSON.stringify({ name, maskedTaxId }),
+    });
+  }
+
   async disconnectQbo() {
     return this.request('/qbo/disconnect', { method: 'POST' });
   }
@@ -430,6 +437,13 @@ export interface OnboardingStatus {
   missingItems: Record<string, string[]>;
 }
 
+export interface ResolveRncResponse {
+  resolved: boolean;
+  resolvedRnc?: string;
+  resolvedRazonSocial?: string;
+  candidates: DgiiRncResult[];
+}
+
 export interface DgiiRncResult {
   rnc: string;
   razonSocial: string;
@@ -496,6 +510,7 @@ export interface CustomerMapping {
   id: string;
   qboCustomerId: string;
   qboDisplayName: string;
+  qboTaxId?: string;
   rnc?: string;
   razonSocialDgii?: string;
   tipoComprobante: string;
@@ -506,6 +521,7 @@ export interface VendorMapping {
   id: string;
   qboVendorId: string;
   qboDisplayName: string;
+  qboTaxId?: string;
   rnc?: string;
   razonSocialDgii?: string;
   tipoComprobante: string;

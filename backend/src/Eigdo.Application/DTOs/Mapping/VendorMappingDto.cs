@@ -8,6 +8,7 @@ public class VendorMappingDto
     public Guid CompanyId { get; set; }
     public string QboVendorId { get; set; } = string.Empty;
     public string QboDisplayName { get; set; } = string.Empty;
+    public string? QboTaxId { get; set; }
     public string? Rnc { get; set; }
     public string? RazonSocialDgii { get; set; }
     public EcfType TipoComprobante { get; set; }

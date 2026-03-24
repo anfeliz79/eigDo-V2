@@ -136,6 +136,7 @@ public class CustomerMappingService
         CompanyId = m.CompanyId,
         QboCustomerId = m.QboCustomerId,
         QboDisplayName = m.QboDisplayName,
+        QboTaxId = m.QboTaxId,
         Rnc = m.Rnc,
         RazonSocialDgii = m.RazonSocialDgii,
         TipoComprobante = m.TipoComprobante,

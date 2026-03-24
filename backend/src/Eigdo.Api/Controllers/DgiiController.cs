@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Eigdo.Application.DTOs;
 using Eigdo.Application.DTOs.Dgii;
 using Eigdo.Application.DTOs.Support;
@@ -9,6 +10,20 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace Eigdo.Api.Controllers;
+
+public class ResolveRncRequest
+{
+    public string Name { get; set; } = string.Empty;
+    public string? MaskedTaxId { get; set; }
+}
+
+public class ResolveRncResponse
+{
+    public bool Resolved { get; set; }
+    public string? ResolvedRnc { get; set; }
+    public string? ResolvedRazonSocial { get; set; }
+    public List<DgiiRncResultDto> Candidates { get; set; } = new();
+}
 
 [ApiController]
 [Route("api/[controller]")]
@@ -40,6 +55,58 @@ public class DgiiController : ControllerBase
             return NotFound(ApiResponse<string>.Fail("No se encontro el RNC en la base de datos de la DGII."));
 
         return Ok(ApiResponse<DgiiRncResultDto>.Ok(result));
+    }
+
+    /// <summary>
+    /// Attempts to resolve a full RNC from DGII by searching the company name and matching
+    /// the visible suffix of the masked QBO TaxIdentifier (e.g. "XXXX21430019" → suffix "21430019").
+    /// Returns a list of candidates sorted by confidence (unique match first).
+    /// </summary>
+    [HttpPost("resolve-rnc")]
+    public async Task<IActionResult> ResolveRnc([FromBody] ResolveRncRequest request, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Trim().Length < 4)
+            return BadRequest(ApiResponse<string>.Fail("El nombre debe tener al menos 4 caracteres."));
+
+        var candidates = await _dgiiService.SearchByNameAsync(request.Name, ct);
+
+        if (candidates.Count == 0)
+            return Ok(ApiResponse<ResolveRncResponse>.Ok(new ResolveRncResponse
+            {
+                Resolved = false,
+                Candidates = new()
+            }));
+
+        // Extract visible suffix from masked TaxId (e.g. "XXXX21430019" → "21430019", "XXXX-1234" → "1234")
+        var suffix = ExtractVisibleSuffix(request.MaskedTaxId);
+
+        List<DgiiRncResultDto> matches;
+        if (!string.IsNullOrEmpty(suffix) && suffix.Length >= 4)
+        {
+            matches = candidates.Where(c => c.Rnc.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+        else
+        {
+            // No suffix available — return all candidates
+            matches = candidates;
+        }
+
+        return Ok(ApiResponse<ResolveRncResponse>.Ok(new ResolveRncResponse
+        {
+            Resolved = matches.Count == 1,
+            ResolvedRnc = matches.Count == 1 ? matches[0].Rnc : null,
+            ResolvedRazonSocial = matches.Count == 1 ? matches[0].RazonSocial : null,
+            Candidates = matches.Count == 1 ? matches : candidates
+        }));
+    }
+
+    private static string? ExtractVisibleSuffix(string? maskedTaxId)
+    {
+        if (string.IsNullOrWhiteSpace(maskedTaxId)) return null;
+        // Remove spaces, dashes, X characters from the start to get the visible digits
+        // e.g. "XXXX 21430019" → "21430019", "XXXX-1234" → "1234", "XX63898" → "63898"
+        var digits = Regex.Replace(maskedTaxId, @"[Xx\s\-]+", "");
+        return digits.Length >= 4 ? digits : null;
     }
 
     /// <summary>

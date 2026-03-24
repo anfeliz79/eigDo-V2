@@ -9,6 +9,7 @@ import {
   type FieldMappingDto,
   type VendorMapping,
   type DgiiRncResult,
+  type ResolveRncResponse,
 } from '@/lib/api';
 
 const vendorEcfTypes = [
@@ -51,6 +52,9 @@ export default function VendorMappingsPage() {
   const [savingException, setSavingException] = useState(false);
   const [rncStatus, setRncStatus] = useState<RncStatus>('idle');
   const [rncResult, setRncResult] = useState<DgiiRncResult | null>(null);
+  const [resolving, setResolving] = useState(false);
+  const [resolveResults, setResolveResults] = useState<{ name: string; result: ResolveRncResponse }[]>([]);
+  const [showResolveResults, setShowResolveResults] = useState(false);
 
   useEffect(() => {
     loadSample();
@@ -199,6 +203,33 @@ export default function VendorMappingsPage() {
     } catch (err) {
       setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Error al eliminar' });
     }
+  };
+
+  const resolveAllRncs = async () => {
+    const unresolved = exceptions.filter(e => !e.rnc && !e.excluido);
+    if (unresolved.length === 0) {
+      setMessage({ type: 'error', text: 'Todos los proveedores ya tienen RNC asignado' });
+      return;
+    }
+    setResolving(true);
+    setResolveResults([]);
+    setShowResolveResults(true);
+    setExceptionsOpen(true);
+    const results: { name: string; result: ResolveRncResponse }[] = [];
+    for (const exc of unresolved) {
+      try {
+        const res = await api.resolveRnc(exc.qboDisplayName, exc.qboTaxId);
+        results.push({ name: exc.qboDisplayName, result: res });
+        if (res.resolved && res.resolvedRnc) {
+          await api.saveVendorMapping({ id: exc.id, rnc: res.resolvedRnc, razonSocialDgii: res.resolvedRazonSocial });
+        }
+      } catch {
+        results.push({ name: exc.qboDisplayName, result: { resolved: false, candidates: [] } });
+      }
+    }
+    setResolveResults(results);
+    setResolving(false);
+    loadExceptions();
   };
 
   const loading = loadingSample || loadingMappings;
@@ -439,11 +470,11 @@ export default function VendorMappingsPage() {
 
           {/* Exceptions Section */}
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-            <button
-              onClick={() => setExceptionsOpen(!exceptionsOpen)}
-              className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition"
-            >
-              <div className="flex items-center gap-3">
+            <div className="px-6 py-4 flex items-center justify-between">
+              <button
+                onClick={() => setExceptionsOpen(!exceptionsOpen)}
+                className="flex items-center gap-3 flex-1 text-left hover:opacity-80 transition"
+              >
                 <svg className="w-5 h-5 text-amber-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
                 </svg>
@@ -456,17 +487,72 @@ export default function VendorMappingsPage() {
                     {exceptions.length}
                   </span>
                 )}
-              </div>
-              <svg
-                className={`w-5 h-5 text-gray-400 transition-transform ${exceptionsOpen ? 'rotate-180' : ''}`}
-                fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"
+                <svg
+                  className={`w-5 h-5 text-gray-400 transition-transform ${exceptionsOpen ? 'rotate-180' : ''}`}
+                  fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                </svg>
+              </button>
+              <button
+                onClick={resolveAllRncs}
+                disabled={resolving}
+                className="ml-3 px-3 py-1.5 bg-purple-600 text-white text-xs font-medium rounded-lg hover:bg-purple-700 disabled:bg-purple-400 transition flex items-center gap-1.5 shrink-0"
+                title="Buscar RNC automaticamente usando nombre + DGII"
               >
-                <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-              </svg>
-            </button>
+                {resolving ? (
+                  <>
+                    <span className="animate-spin rounded-full h-3 w-3 border-b-2 border-white inline-block" />
+                    Resolviendo...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+                    </svg>
+                    Resolver RNCs
+                  </>
+                )}
+              </button>
+            </div>
 
             {exceptionsOpen && (
               <div className="border-t border-gray-200 p-6 space-y-4">
+                {/* Resolve results panel */}
+                {showResolveResults && resolveResults.length > 0 && (
+                  <div className="border border-purple-200 rounded-xl p-4 bg-purple-50 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold text-purple-800">Resultado de resolucion automatica</p>
+                      <button onClick={() => setShowResolveResults(false)} className="text-purple-400 hover:text-purple-600">
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                    {resolveResults.map((r, i) => (
+                      <div key={i} className="flex items-start gap-2 text-xs">
+                        {r.result.resolved ? (
+                          <svg className="w-3.5 h-3.5 text-green-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                          </svg>
+                        ) : (
+                          <svg className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+                          </svg>
+                        )}
+                        <span className="text-gray-700">
+                          <span className="font-medium">{r.name}</span>
+                          {r.result.resolved
+                            ? <> — RNC: <span className="font-mono">{r.result.resolvedRnc}</span></>
+                            : r.result.candidates.length > 0
+                              ? <> — {r.result.candidates.length} candidatos, ingresa manualmente</>
+                              : <> — No encontrado en DGII</>
+                          }
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {loadingExceptions ? (
                   <div className="text-center py-4">
                     <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-600 mx-auto" />

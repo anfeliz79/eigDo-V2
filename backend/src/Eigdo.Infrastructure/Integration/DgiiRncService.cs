@@ -8,6 +8,7 @@ namespace Eigdo.Infrastructure.Integration;
 public interface IDgiiRncService
 {
     Task<DgiiRncResultDto?> LookupRncAsync(string rnc, CancellationToken ct = default);
+    Task<List<DgiiRncResultDto>> SearchByNameAsync(string name, CancellationToken ct = default);
 }
 
 public class DgiiRncService : IDgiiRncService
@@ -81,6 +82,110 @@ public class DgiiRncService : IDgiiRncService
             _logger.LogError(ex, "DGII: Error al consultar RNC {Rnc}", rnc);
             return null;
         }
+    }
+
+    public async Task<List<DgiiRncResultDto>> SearchByNameAsync(string name, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(name) || name.Trim().Length < 4)
+            return new();
+
+        try
+        {
+            var handler = new HttpClientHandler
+            {
+                CookieContainer = new CookieContainer(),
+                UseCookies = true,
+                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
+            };
+
+            using var client = new HttpClient(handler);
+            client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+
+            var getResponse = await client.GetStringAsync(DgiiUrl, ct);
+            var viewState = ExtractHiddenField(getResponse, "__VIEWSTATE");
+            var viewStateGenerator = ExtractHiddenField(getResponse, "__VIEWSTATEGENERATOR");
+            var eventValidation = ExtractHiddenField(getResponse, "__EVENTVALIDATION");
+
+            if (string.IsNullOrEmpty(viewState) || string.IsNullOrEmpty(eventValidation))
+                return new();
+
+            var postData = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["__VIEWSTATE"] = viewState,
+                ["__VIEWSTATEGENERATOR"] = viewStateGenerator ?? "",
+                ["__EVENTVALIDATION"] = eventValidation,
+                ["ctl00$cphMain$txtRazonSocial"] = name.Trim(),
+                ["ctl00$cphMain$btnBuscarPorRazonSocial"] = "Buscar",
+                ["ctl00$cphMain$hidActiveTab"] = "razonsocial"
+            });
+
+            var request = new HttpRequestMessage(HttpMethod.Post, DgiiUrl)
+            {
+                Content = postData
+            };
+            request.Headers.Add("Referer", DgiiUrl);
+            request.Headers.Add("Origin", "https://dgii.gov.do");
+
+            var response = await client.SendAsync(request, ct);
+            var html = await response.Content.ReadAsStringAsync(ct);
+
+            return ParseNameSearchResults(html);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "DGII: Error al buscar por nombre '{Name}'", name);
+            return new();
+        }
+    }
+
+    private static List<DgiiRncResultDto> ParseNameSearchResults(string html)
+    {
+        var results = new List<DgiiRncResultDto>();
+
+        // Table id="cphMain_gvBuscRazonSocial"
+        // Columns: Cédula/RNC | Nombre/Razón Social | Nombre Comercial | Categoría | Régimen de pagos | Estado | Facturador Electrónico | ...
+        var tableMatch = Regex.Match(html,
+            @"id=""cphMain_gvBuscRazonSocial"".*?<tbody[^>]*>(.*?)</tbody>",
+            RegexOptions.Singleline | RegexOptions.IgnoreCase);
+
+        // Fallback: no tbody — parse rows directly from table
+        if (!tableMatch.Success)
+        {
+            tableMatch = Regex.Match(html,
+                @"id=""cphMain_gvBuscRazonSocial""[^>]*>(.*?)</table>",
+                RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        }
+
+        if (!tableMatch.Success) return results;
+
+        var tableHtml = tableMatch.Groups[1].Value;
+        var rowPattern = @"<tr[^>]*class=""TbRow""[^>]*>(.*?)</tr>";
+        var cellPattern = @"<td[^>]*>(.*?)</td>";
+
+        foreach (Match rowMatch in Regex.Matches(tableHtml, rowPattern, RegexOptions.Singleline | RegexOptions.IgnoreCase))
+        {
+            var cells = Regex.Matches(rowMatch.Groups[1].Value, cellPattern, RegexOptions.Singleline);
+            if (cells.Count < 3) continue;
+
+            var rnc = StripHtml(cells[0].Groups[1].Value).Replace("-", "").Trim();
+            var razonSocial = StripHtml(cells[1].Groups[1].Value).Trim();
+            var nombreComercial = StripHtml(cells[2].Groups[1].Value).Trim();
+            var estado = cells.Count > 5 ? StripHtml(cells[5].Groups[1].Value).Trim() : "";
+            var esFE = cells.Count > 6 && StripHtml(cells[6].Groups[1].Value).Trim().Equals("SI", StringComparison.OrdinalIgnoreCase);
+
+            if (string.IsNullOrEmpty(rnc)) continue;
+
+            results.Add(new DgiiRncResultDto
+            {
+                Rnc = rnc,
+                RazonSocial = razonSocial,
+                NombreComercial = nombreComercial == "&nbsp;" ? "" : nombreComercial,
+                Estado = estado,
+                EsFacturadorElectronico = esFE
+            });
+        }
+
+        return results;
     }
 
     private static string? ExtractHiddenField(string html, string fieldName)

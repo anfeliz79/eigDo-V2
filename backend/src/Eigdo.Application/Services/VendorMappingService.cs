@@ -139,6 +139,7 @@ public class VendorMappingService
         CompanyId = m.CompanyId,
         QboVendorId = m.QboVendorId,
         QboDisplayName = m.QboDisplayName,
+        QboTaxId = m.QboTaxId,
         Rnc = m.Rnc,
         RazonSocialDgii = m.RazonSocialDgii,
         TipoComprobante = m.TipoComprobante,
