@@ -720,10 +720,12 @@ public class QboController : EigdoControllerBase
                 }
                 else
                 {
-                    // Update QBO-sourced fields only; never overwrite manually entered Rnc/RazonSocialDgii
+                    // Update QBO-sourced fields; also backfill RazonSocialDgii if it was never set
                     existing.QboDisplayName = displayName;
                     existing.QboEmail = email;
                     existing.QboPhone = phone;
+                    if (string.IsNullOrWhiteSpace(existing.RazonSocialDgii))
+                        existing.RazonSocialDgii = ResolveRazonSocial(c, custFieldMappings, displayName);
                     existing.UpdatedAtUtc = DateTime.UtcNow;
                 }
             }
@@ -761,10 +763,12 @@ public class QboController : EigdoControllerBase
                 }
                 else
                 {
-                    // Update QBO-sourced fields only; never overwrite manually entered Rnc/RazonSocialDgii
+                    // Update QBO-sourced fields; also backfill RazonSocialDgii if it was never set
                     existing.QboDisplayName = displayName;
                     existing.QboEmail = email;
                     existing.QboPhone = phone;
+                    if (string.IsNullOrWhiteSpace(existing.RazonSocialDgii))
+                        existing.RazonSocialDgii = ResolveRazonSocial(v, vendFieldMappings, displayName);
                     existing.UpdatedAtUtc = DateTime.UtcNow;
                 }
             }
