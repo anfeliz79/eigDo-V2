@@ -82,6 +82,9 @@ public static class DependencyInjection
         services.AddScoped<AlanubeClient>();
         services.AddScoped<IFiscalProvider>(sp => sp.GetRequiredService<AlanubeClient>());
 
+        // Platform config (URLs, support info — managed from SuperAdmin)
+        services.AddScoped<IPlatformConfigProvider, PlatformConfigProvider>();
+
         // QBO integration
         services.AddScoped<IQboConfigProvider, QboConfigProvider>();
         services.AddScoped<IQboClient, Integration.QboApiClient>();

@@ -1096,6 +1096,148 @@ public class AdminController : EigdoControllerBase
         return Ok(new { message = "Usuario desactivado exitosamente." });
     }
 
+    // ────────── Platform Configuration ──────────
+
+    private static readonly string[] PlatformConfigKeys = new[]
+    {
+        "platform.app_url", "platform.admin_url", "platform.api_url",
+        "platform.landing_url", "platform.whatsapp_number",
+        "platform.support_email", "platform.viafirma_url"
+    };
+
+    [HttpGet("platform-config")]
+    public async Task<IActionResult> GetPlatformConfig()
+    {
+        var dbSettings = await _db.AppSettings
+            .Where(s => PlatformConfigKeys.Contains(s.Key))
+            .ToListAsync();
+
+        var result = new Dictionary<string, string?>();
+        foreach (var key in PlatformConfigKeys)
+        {
+            var dbEntry = dbSettings.FirstOrDefault(s => s.Key == key);
+            result[key] = dbEntry?.Value;
+        }
+
+        return Ok(result);
+    }
+
+    [HttpPut("platform-config")]
+    [Authorize(Roles = "SuperAdmin,Admin")]
+    public async Task<IActionResult> UpdatePlatformConfig([FromBody] Dictionary<string, string?> settings)
+    {
+        var dbSettings = await _db.AppSettings
+            .Where(s => PlatformConfigKeys.Contains(s.Key))
+            .ToListAsync();
+
+        foreach (var key in PlatformConfigKeys)
+        {
+            if (!settings.TryGetValue(key, out var value))
+                continue;
+
+            var existing = dbSettings.FirstOrDefault(s => s.Key == key);
+            if (existing != null)
+            {
+                existing.Value = value ?? "";
+                existing.UpdatedAtUtc = DateTime.UtcNow;
+            }
+            else
+            {
+                _db.AppSettings.Add(new AppSetting
+                {
+                    Key = key,
+                    Value = value ?? "",
+                    IsSecret = false,
+                });
+            }
+        }
+
+        await _db.SaveChangesAsync();
+
+        // Clear platform config cache so changes take effect immediately
+        Eigdo.Infrastructure.Services.PlatformConfigProvider.ClearCache();
+
+        return Ok(new { message = "Configuracion de plataforma actualizada." });
+    }
+
+    // ────────── SSL Status ──────────
+
+    [HttpGet("ssl-status")]
+    public IActionResult GetSslStatus()
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "certbot",
+                Arguments = "certificates",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+
+            using var process = System.Diagnostics.Process.Start(psi);
+            if (process == null)
+                return Ok(new { certificates = Array.Empty<object>(), error = "No se pudo ejecutar certbot." });
+
+            var output = process.StandardOutput.ReadToEnd();
+            process.WaitForExit(10_000);
+
+            var certs = new List<object>();
+            var lines = output.Split('\n');
+
+            string? currentDomains = null;
+            DateTime? currentExpiry = null;
+
+            foreach (var rawLine in lines)
+            {
+                var line = rawLine.Trim();
+
+                if (line.StartsWith("Domains:"))
+                {
+                    currentDomains = line.Substring("Domains:".Length).Trim();
+                }
+                else if (line.StartsWith("Expiry Date:"))
+                {
+                    var dateStr = line.Substring("Expiry Date:".Length).Trim();
+                    // Format: "2025-04-15 12:00:00+00:00 (VALID: 89 days)"
+                    var parenIdx = dateStr.IndexOf('(');
+                    if (parenIdx > 0)
+                        dateStr = dateStr[..parenIdx].Trim();
+
+                    if (DateTimeOffset.TryParse(dateStr, out var expiry))
+                    {
+                        currentExpiry = expiry.UtcDateTime;
+                    }
+
+                    if (currentDomains != null)
+                    {
+                        var daysRemaining = currentExpiry.HasValue
+                            ? (int)(currentExpiry.Value - DateTime.UtcNow).TotalDays
+                            : 0;
+
+                        certs.Add(new
+                        {
+                            domains = currentDomains,
+                            expiryDate = currentExpiry?.ToString("yyyy-MM-dd"),
+                            daysRemaining,
+                        });
+
+                        currentDomains = null;
+                        currentExpiry = null;
+                    }
+                }
+            }
+
+            return Ok(new { certificates = certs });
+        }
+        catch (Exception ex)
+        {
+            return Ok(new { certificates = Array.Empty<object>(), error = $"Error al verificar certificados: {ex.Message}" });
+        }
+    }
+
     // ────────── Private Helpers ──────────
 
     private static string? MaskSecret(string? value)

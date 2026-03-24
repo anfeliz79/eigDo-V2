@@ -223,8 +223,9 @@ class ApiClient {
   }
 
   // QBO Sample & Field Mappings
-  async getQboSample(entityType: string) {
-    return this.request<QboSampleRecord>(`/qbo/sample/${encodeURIComponent(entityType)}`);
+  async getQboSample(entityType: string, skip?: number) {
+    const skipParam = skip !== undefined ? `?skip=${skip}` : '';
+    return this.request<QboSampleRecord>(`/qbo/sample/${encodeURIComponent(entityType.toLowerCase())}${skipParam}`);
   }
 
   async getFieldMappings(entityType: string) {

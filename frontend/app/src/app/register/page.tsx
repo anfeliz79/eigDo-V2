@@ -4,14 +4,18 @@ import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import Logo from '@/components/Logo';
-import { api } from '@/lib/api';
+import { api, PlanDto } from '@/lib/api';
 
-// Plan data for immediate display (matches DB seed)
-const PLAN_DETAILS: Record<string, { name: string; price: string; docs: number }> = {
-  basico: { name: 'Basico', price: '$1,500/mes', docs: 100 },
-  profesional: { name: 'Profesional', price: '$3,500/mes', docs: 500 },
-  empresarial: { name: 'Empresarial', price: '$7,500/mes', docs: 2000 },
-};
+function formatPrice(amount: number, currency: string, interval: string): string {
+  const formatted = new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount);
+  const intervalLabel = interval === 'month' ? 'mes' : interval;
+  return `${formatted}/${intervalLabel}`;
+}
 
 function RegisterForm() {
   const router = useRouter();
@@ -41,6 +45,12 @@ function RegisterForm() {
   const [selectedPriceId] = useState(priceIdParam);
   const [selectedPlanSlug] = useState(planSlug);
 
+  // Fetch plans from the API so prices always match the backend
+  const [plans, setPlans] = useState<PlanDto[]>([]);
+  useEffect(() => {
+    api.getPlans().then(setPlans).catch(() => {});
+  }, []);
+
   // If somehow no plan, show nothing while redirecting
   if (!planSlug || !priceIdParam) {
     return (
@@ -50,7 +60,23 @@ function RegisterForm() {
     );
   }
 
-  const selectedPlan = PLAN_DETAILS[selectedPlanSlug] || null;
+  // Match the plan from the API by slug (case-insensitive)
+  const matchedPlan = plans.find(
+    (p) => p.name.toLowerCase() === selectedPlanSlug.toLowerCase(),
+  );
+  const matchedPrice = matchedPlan?.prices.find((pr) => pr.id === selectedPriceId)
+    ?? matchedPlan?.prices[0]
+    ?? null;
+
+  const selectedPlan = matchedPlan
+    ? {
+        name: matchedPlan.name,
+        price: matchedPrice
+          ? formatPrice(matchedPrice.amount, matchedPrice.currency, matchedPrice.interval)
+          : '',
+        docs: matchedPlan.includedDocumentsPerMonth,
+      }
+    : null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

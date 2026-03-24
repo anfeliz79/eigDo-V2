@@ -1,16 +1,18 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Suspense } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 
 function SuccessContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const sessionId = searchParams.get('session_id') || '';
   const [confirming, setConfirming] = useState(true);
   const [confirmed, setConfirmed] = useState(false);
+  const [countdown, setCountdown] = useState(5);
 
   useEffect(() => {
     if (!sessionId) {
@@ -21,9 +23,25 @@ function SuccessContent() {
 
     api.confirmCheckout(sessionId)
       .then(() => setConfirmed(true))
-      .catch(() => setConfirmed(true)) // Still show success — webhook may handle it
+      .catch(() => setConfirmed(true))
       .finally(() => setConfirming(false));
   }, [sessionId]);
+
+  // Auto-redirect to onboarding after confirmation
+  useEffect(() => {
+    if (!confirmed || confirming) return;
+    const timer = setInterval(() => {
+      setCountdown((c) => {
+        if (c <= 1) {
+          clearInterval(timer);
+          router.push('/onboarding');
+          return 0;
+        }
+        return c - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [confirmed, confirming, router]);
 
   if (confirming) {
     return (
@@ -48,7 +66,10 @@ function SuccessContent() {
         <p className="text-gray-500 mt-2">
           Tu suscripcion ha sido activada exitosamente. Ya puedes configurar tu empresa.
         </p>
-        <div className="mt-8 flex gap-3 justify-center">
+        <p className="text-sm text-gray-400 mt-4">
+          Redirigiendo al onboarding en {countdown} segundos...
+        </p>
+        <div className="mt-6 flex gap-3 justify-center">
           <Link
             href="/onboarding"
             className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition"

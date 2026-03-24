@@ -450,6 +450,8 @@ Frontend apps need `NEXT_PUBLIC_API_URL` set at BUILD time (not runtime).
 | 5 Mapping Cycles | `docs/mapping/five-cycles.md` | QBO → Alanube transformation, all cycles detailed |
 | API Endpoints | `docs/api/endpoints.md` | Full REST API reference with request/response |
 | Deployment Guide | `docs/deployment.md` | Step-by-step VPS deployment (setup, config, deploy, SSL) |
+| Deployment Runbook | `docs/deployment-runbook.md` | Complete deployment procedures, env matrix, rollback, gotchas |
+| Environments Reference | `docs/environments.md` | All URLs, ports, env vars for staging and production |
 | Development Guide | `docs/development.md` | Local setup, build commands, project structure |
 | Troubleshooting | `docs/troubleshooting.md` | Common issues and fixes (SSH, 502, SSL, DB, etc.) |
 

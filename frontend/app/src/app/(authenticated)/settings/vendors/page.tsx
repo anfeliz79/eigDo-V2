@@ -40,6 +40,7 @@ export default function VendorMappingsPage() {
 
   // Onboarding
   const [isOnboarding, setIsOnboarding] = useState(false);
+  const [sampleSkip, setSampleSkip] = useState(0);
 
   // Exceptions state
   const [exceptions, setExceptions] = useState<VendorMapping[]>([]);
@@ -62,10 +63,10 @@ export default function VendorMappingsPage() {
       .catch(() => {});
   }, []);
 
-  const loadSample = async () => {
+  const loadSample = async (skip = 0) => {
     setLoadingSample(true);
     try {
-      const data = await api.getQboSample('Vendor');
+      const data = await api.getQboSample('Vendor', skip);
       setSample(data);
     } catch {
       setSample(null);
@@ -95,15 +96,9 @@ export default function VendorMappingsPage() {
   };
 
   const refreshSample = async () => {
-    setLoadingSample(true);
-    try {
-      const data = await api.getQboSample('Vendor');
-      setSample(data);
-    } catch {
-      setMessage({ type: 'error', text: 'No se pudo cargar otro registro de ejemplo' });
-    } finally {
-      setLoadingSample(false);
-    }
+    const nextSkip = sampleSkip + 1;
+    setSampleSkip(nextSkip);
+    await loadSample(nextSkip);
   };
 
   const getMappingForField = (targetField: string): FieldMappingDto | undefined => {

@@ -18,6 +18,10 @@ const ONBOARDING_ALLOWED_PATHS = [
   '/settings/items',
   '/settings/certificate',
   '/settings/sequences',
+  '/settings/billing',
+  '/settings/profile',
+  '/billing/success',
+  '/billing/cancelled',
   '/companies/new',
 ];
 
@@ -123,6 +127,7 @@ function OnboardingGuard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
     Promise.all([
       api.getOnboardingStatus(),
       api.getSubscription().catch(() => null),
@@ -138,7 +143,7 @@ function OnboardingGuard({ children }: { children: React.ReactNode }) {
       }
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [pathname]);
 
   const isComplete =
     onboardingStatus !== null &&
@@ -157,12 +162,13 @@ function OnboardingGuard({ children }: { children: React.ReactNode }) {
   const canAccessApp = isComplete || skippedCertificate || userSkipped;
 
   useEffect(() => {
-    if (!loading && onboardingStatus && !canAccessApp) {
+    // Don't redirect if no subscription — the subscription block handles that
+    if (!loading && onboardingStatus && !canAccessApp && hasSubscription !== false) {
       if (!isOnboardingAllowedPath(pathname)) {
         router.replace('/onboarding');
       }
     }
-  }, [loading, onboardingStatus, pathname, router, canAccessApp]);
+  }, [loading, onboardingStatus, pathname, router, canAccessApp, hasSubscription]);
 
   if (loading) {
     return (
@@ -174,7 +180,7 @@ function OnboardingGuard({ children }: { children: React.ReactNode }) {
 
   // No subscription — block everything except billing/companies pages
   if (hasSubscription === false && !isComplete) {
-    const billingAllowed = pathname === '/settings/billing' || pathname === '/companies/new' || pathname.startsWith('/billing/');
+    const billingAllowed = pathname === '/settings/billing' || pathname === '/companies/new' || pathname.startsWith('/billing/') || pathname === '/billing/success' || pathname === '/billing/cancelled';
     if (!billingAllowed) {
       return (
         <div className="flex flex-col h-screen bg-white">
@@ -197,12 +203,12 @@ function OnboardingGuard({ children }: { children: React.ReactNode }) {
               <p className="text-gray-500 mt-2">
                 Debes seleccionar un plan para esta empresa antes de continuar con la configuracion.
               </p>
-              <a
-                href="/settings/billing"
-                className="mt-6 inline-flex px-6 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors"
+              <button
+                onClick={() => router.push('/settings/billing')}
+                className="mt-6 inline-flex px-6 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors cursor-pointer"
               >
                 Seleccionar Plan
-              </a>
+              </button>
             </div>
           </main>
         </div>

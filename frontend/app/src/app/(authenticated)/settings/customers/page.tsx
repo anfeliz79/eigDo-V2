@@ -40,6 +40,7 @@ export default function CustomerMappingsPage() {
 
   // Onboarding
   const [isOnboarding, setIsOnboarding] = useState(false);
+  const [sampleSkip, setSampleSkip] = useState(0);
 
   // Exceptions state
   const [exceptions, setExceptions] = useState<CustomerMapping[]>([]);

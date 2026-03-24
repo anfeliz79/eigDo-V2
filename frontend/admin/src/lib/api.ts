@@ -254,6 +254,23 @@ class AdminApiClient {
     return this.request<{ message: string }>(`/admin/users/${id}`, { method: 'DELETE' });
   }
 
+  // Platform Config
+  async getPlatformConfig() {
+    return this.request<PlatformConfig>('/admin/platform-config');
+  }
+
+  async updatePlatformConfig(data: PlatformConfig) {
+    return this.request<{ message: string }>('/admin/platform-config', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // SSL Status
+  async getSslStatus() {
+    return this.request<SslStatusResponse>('/admin/ssl-status');
+  }
+
   // Audit logs
   async getAuditLogs(params: AuditLogParams = {}) {
     const qs = new URLSearchParams();
@@ -541,6 +558,27 @@ export interface UpdateProfileRequest {
 export interface ChangePasswordRequest {
   currentPassword: string;
   newPassword: string;
+}
+
+export interface PlatformConfig {
+  'platform.app_url'?: string | null;
+  'platform.admin_url'?: string | null;
+  'platform.api_url'?: string | null;
+  'platform.landing_url'?: string | null;
+  'platform.whatsapp_number'?: string | null;
+  'platform.support_email'?: string | null;
+  'platform.viafirma_url'?: string | null;
+}
+
+export interface SslCertificate {
+  domains: string;
+  expiryDate: string;
+  daysRemaining: number;
+}
+
+export interface SslStatusResponse {
+  certificates: SslCertificate[];
+  error?: string;
 }
 
 export const adminApi = new AdminApiClient(API_BASE);

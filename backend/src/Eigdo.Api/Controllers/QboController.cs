@@ -24,29 +24,40 @@ public class QboController : EigdoControllerBase
     private readonly IAuditService _audit;
     private readonly IConfiguration _config;
     private readonly IQboConfigProvider _qboConfig;
+    private readonly IPlatformConfigProvider _platformConfig;
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IEncryptionService _encryption;
     private readonly ILogger<QboController> _logger;
 
-    public QboController(IQboClient qboClient, IEigdoDbContext db, IAuditService audit, IConfiguration config, IQboConfigProvider qboConfig, ILogger<QboController> logger)
+    public QboController(IQboClient qboClient, IEigdoDbContext db, IAuditService audit, IConfiguration config, IQboConfigProvider qboConfig, IPlatformConfigProvider platformConfig, IHttpClientFactory httpClientFactory, IEncryptionService encryption, ILogger<QboController> logger)
     {
         _qboClient = qboClient;
         _db = db;
         _audit = audit;
         _config = config;
         _qboConfig = qboConfig;
+        _platformConfig = platformConfig;
+        _httpClientFactory = httpClientFactory;
+        _encryption = encryption;
         _logger = logger;
     }
 
-    private bool IsSandboxMode => string.IsNullOrEmpty(_config.GetValue<string>("QBO_CLIENT_ID"));
+    private async Task<bool> IsQboConfiguredAsync()
+    {
+        var clientId = await _qboConfig.GetClientIdAsync();
+        return !string.IsNullOrEmpty(clientId);
+    }
 
     private async Task<bool> IsSandboxModeAsync()
     {
-        var clientId = await _qboConfig.GetClientIdAsync();
-        return string.IsNullOrEmpty(clientId);
+        var env = await _qboConfig.GetEnvironmentAsync();
+        return string.Equals(env, "Sandbox", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
     /// Get the OAuth 2.0 authorization URL to redirect the user to Intuit.
-    /// In sandbox mode, returns a sandbox-connect URL instead.
+    /// When credentials are configured, ALWAYS does real OAuth (sandbox or production based on QBO_ENVIRONMENT).
+    /// Only simulates when no credentials are configured at all.
     /// </summary>
     [HttpGet("auth-url")]
     public async Task<IActionResult> GetAuthUrl(CancellationToken ct)
@@ -54,17 +65,14 @@ public class QboController : EigdoControllerBase
         var companyId = GetCompanyId();
         if (companyId == null) return Unauthorized(ApiResponse<string>.Fail("Empresa no identificada."));
 
-        if (await IsSandboxModeAsync())
-        {
-            // In sandbox mode, point to our sandbox-connect endpoint
-            var baseUrl = $"{Request.Scheme}://{Request.Host}";
-            return Ok(ApiResponse<object>.Ok(new
-            {
-                authUrl = $"{baseUrl}/api/qbo/sandbox-connect?companyId={companyId.Value}",
-                sandbox = true
-            }));
-        }
+        var isConfigured = await IsQboConfiguredAsync();
+        var isSandbox = await IsSandboxModeAsync();
 
+        // No credentials at all — block connection
+        if (!isConfigured)
+            return BadRequest(ApiResponse<string>.Fail("QuickBooks no esta configurado. El administrador debe configurar las credenciales desde el panel de administracion (Admin > Config QBO)."));
+
+        // Credentials exist — always use real OAuth (even in sandbox mode, Intuit has a sandbox OAuth)
         var clientId = await _qboConfig.GetClientIdAsync();
         var redirectUri = await _qboConfig.GetRedirectUriAsync();
 
@@ -76,28 +84,22 @@ public class QboController : EigdoControllerBase
                 "Ejemplo: https://tudominio.com/api/qbo/callback"));
         }
 
-        if (string.IsNullOrEmpty(clientId))
-        {
-            return BadRequest(ApiResponse<object>.Fail(
-                "El Client ID de QuickBooks no esta configurado. " +
-                "Pidele al administrador que lo configure en Admin > Config QBO."));
-        }
-
         var url = await _qboClient.GetAuthorizationUrlAsync(companyId.Value, redirectUri);
 
-        return Ok(ApiResponse<object>.Ok(new { authUrl = url }));
+        return Ok(ApiResponse<object>.Ok(new { authUrl = url, sandbox = isSandbox }));
     }
 
     /// <summary>
-    /// SANDBOX MODE: Simulates QBO OAuth connection when QBO_CLIENT_ID is not configured.
-    /// Creates a fake QboConnection and redirects to onboarding.
+    /// DEPRECATED: Sandbox simulation endpoint. Only works when NO credentials are configured.
+    /// With proper QBO sandbox credentials, use the real OAuth flow instead.
     /// </summary>
     [HttpGet("sandbox-connect")]
     [AllowAnonymous]
     public async Task<IActionResult> SandboxConnect([FromQuery] Guid companyId, CancellationToken ct)
     {
-        if (!await IsSandboxModeAsync())
-            return BadRequest(ApiResponse<string>.Fail("Sandbox mode no esta activo."));
+        // Only allow simulation when QBO credentials are NOT configured (pure local dev)
+        if (await IsQboConfiguredAsync())
+            return BadRequest(ApiResponse<string>.Fail("Las credenciales QBO estan configuradas. Usa el flujo OAuth real."));
 
         var sandboxRealmId = $"sandbox_{Guid.NewGuid():N}".Substring(0, 20);
 
@@ -141,8 +143,9 @@ public class QboController : EigdoControllerBase
             await _db.SaveChangesAsync(ct);
         }
 
-        // Redirect to frontend onboarding
-        var frontendUrl = _config.GetValue<string>("QBO_SUCCESS_REDIRECT") ?? "http://localhost:3002/onboarding?qbo=connected";
+        // Redirect to frontend onboarding — URL resolved from SuperAdmin config
+        var appUrl = (await _platformConfig.GetAppUrlAsync()).TrimEnd('/');
+        var frontendUrl = $"{appUrl}/onboarding?qbo=connected";
         return Redirect(frontendUrl);
     }
 
@@ -244,8 +247,9 @@ public class QboController : EigdoControllerBase
             await _db.SaveChangesAsync(ct);
         }
 
-        // Redirect to frontend app after successful connection
-        var frontendUrl = _config.GetValue<string>("QBO_SUCCESS_REDIRECT") ?? "http://localhost:3002/onboarding?qbo=connected";
+        // Redirect to frontend app after successful connection — URL from SuperAdmin config
+        var appUrl2 = (await _platformConfig.GetAppUrlAsync()).TrimEnd('/');
+        var frontendUrl = $"{appUrl2}/onboarding?qbo=connected";
         return Redirect(frontendUrl);
     }
 
@@ -258,16 +262,18 @@ public class QboController : EigdoControllerBase
         var companyId = GetCompanyId();
         if (companyId == null) return Unauthorized(ApiResponse<string>.Fail("Empresa no identificada."));
 
+        var isConfigured = await IsQboConfiguredAsync();
         var isSandbox = await IsSandboxModeAsync();
         var connection = await _db.QboConnections
             .FirstOrDefaultAsync(q => q.CompanyId == companyId.Value && q.IsActive, ct);
 
         if (connection == null)
-            return Ok(ApiResponse<object>.Ok(new { connected = false, sandbox = isSandbox }));
+            return Ok(ApiResponse<object>.Ok(new { connected = false, configured = isConfigured, sandbox = isSandbox }));
 
         return Ok(ApiResponse<object>.Ok(new
         {
             connected = true,
+            configured = isConfigured,
             realmId = connection.RealmId,
             accessTokenExpires = connection.AccessTokenExpiresUtc,
             refreshTokenExpires = connection.RefreshTokenExpiresUtc,
@@ -508,112 +514,103 @@ public class QboController : EigdoControllerBase
     #endregion
 
     /// <summary>
-    /// Retorna 1 registro de ejemplo de un cliente QBO con todos los campos disponibles.
-    /// En modo sandbox, retorna datos hardcoded representativos.
+    /// Returns synced customers from the local DB for field mapping.
+    /// Uses real data already synced from QBO — no live API call needed.
     /// </summary>
     [HttpGet("sample/customer")]
-    public async Task<IActionResult> GetSampleCustomer(CancellationToken ct)
+    public async Task<IActionResult> GetSampleCustomer([FromQuery] int? skip, CancellationToken ct)
     {
         var companyId = GetCompanyId();
         if (companyId == null) return Unauthorized(ApiResponse<string>.Fail("Empresa no identificada."));
 
-        var isSandbox = await IsSandboxModeAsync();
+        var customers = await _db.CustomerMappings
+            .Where(m => m.CompanyId == companyId.Value)
+            .OrderBy(m => m.QboDisplayName)
+            .ToListAsync(ct);
 
-        if (isSandbox)
+        if (customers.Count == 0)
+            return NotFound(ApiResponse<string>.Fail("No hay clientes sincronizados. Sincroniza con QuickBooks primero."));
+
+        var idx = (skip ?? 0) % customers.Count;
+        var c = customers[idx];
+
+        var fields = new Dictionary<string, string>
         {
-            var sample = new
-            {
-                id = "42",
-                displayName = "Comercial El Sol",
-                fields = new Dictionary<string, string>
-                {
-                    ["DisplayName"] = "Comercial El Sol",
-                    ["CompanyName"] = "Comercial El Sol SRL",
-                    ["TaxIdentifier"] = "131000000",
-                    ["PrimaryEmailAddr"] = "info@elsol.com.do",
-                    ["PrimaryPhone"] = "809-555-1234",
-                    ["BillAddr.Line1"] = "Av. Winston Churchill 1099",
-                    ["BillAddr.City"] = "Santo Domingo",
-                    ["Notes"] = "",
-                    ["CustomField.1"] = ""
-                }
-            };
-            return Ok(ApiResponse<object>.Ok(sample));
-        }
+            ["Id"] = c.QboCustomerId,
+            ["DisplayName"] = c.QboDisplayName,
+            ["RNC"] = c.Rnc ?? "",
+            ["RazonSocial"] = c.RazonSocialDgii ?? "",
+            ["TipoComprobante"] = c.TipoComprobante.ToString(),
+            ["Excluido"] = c.Excluido.ToString(),
+        };
 
-        // TODO: Implementar consulta real a QBO para obtener 1 customer de ejemplo
-        return BadRequest(ApiResponse<string>.Fail("Consulta de muestra en modo produccion aun no implementada."));
+        return Ok(ApiResponse<object>.Ok(new { id = c.QboCustomerId, displayName = c.QboDisplayName, fields, totalCount = customers.Count }));
     }
 
     /// <summary>
-    /// Retorna 1 registro de ejemplo de un proveedor QBO con todos los campos disponibles.
+    /// Returns synced vendors from the local DB for field mapping.
     /// </summary>
     [HttpGet("sample/vendor")]
-    public async Task<IActionResult> GetSampleVendor(CancellationToken ct)
+    public async Task<IActionResult> GetSampleVendor([FromQuery] int? skip, CancellationToken ct)
     {
         var companyId = GetCompanyId();
         if (companyId == null) return Unauthorized(ApiResponse<string>.Fail("Empresa no identificada."));
 
-        var isSandbox = await IsSandboxModeAsync();
+        var vendors = await _db.VendorMappings
+            .Where(m => m.CompanyId == companyId.Value)
+            .OrderBy(m => m.QboDisplayName)
+            .ToListAsync(ct);
 
-        if (isSandbox)
+        if (vendors.Count == 0)
+            return NotFound(ApiResponse<string>.Fail("No hay proveedores sincronizados. Sincroniza con QuickBooks primero."));
+
+        var idx = (skip ?? 0) % vendors.Count;
+        var v = vendors[idx];
+
+        var fields = new Dictionary<string, string>
         {
-            var sample = new
-            {
-                id = "15",
-                displayName = "Suplidora ABC",
-                fields = new Dictionary<string, string>
-                {
-                    ["DisplayName"] = "Suplidora ABC",
-                    ["CompanyName"] = "Suplidora ABC SRL",
-                    ["TaxIdentifier"] = "101234567",
-                    ["PrimaryEmailAddr"] = "ventas@abc.com.do",
-                    ["PrimaryPhone"] = "809-555-5678",
-                    ["BillAddr.Line1"] = "Calle El Conde 100",
-                    ["BillAddr.City"] = "Santiago",
-                    ["Notes"] = "",
-                    ["CustomField.1"] = ""
-                }
-            };
-            return Ok(ApiResponse<object>.Ok(sample));
-        }
+            ["Id"] = v.QboVendorId,
+            ["DisplayName"] = v.QboDisplayName,
+            ["RNC"] = v.Rnc ?? "",
+            ["RazonSocial"] = v.RazonSocialDgii ?? "",
+            ["TipoComprobante"] = v.TipoComprobante.ToString(),
+            ["RetentionItbisRate"] = v.RetentionItbisRate?.ToString("F2") ?? "",
+            ["RetentionIsrRate"] = v.RetentionIsrRate?.ToString("F2") ?? "",
+        };
 
-        return BadRequest(ApiResponse<string>.Fail("Consulta de muestra en modo produccion aun no implementada."));
+        return Ok(ApiResponse<object>.Ok(new { id = v.QboVendorId, displayName = v.QboDisplayName, fields, totalCount = vendors.Count }));
     }
 
     /// <summary>
-    /// Retorna 1 registro de ejemplo de un item QBO con todos los campos disponibles.
+    /// Returns synced items from the local DB for field mapping.
     /// </summary>
     [HttpGet("sample/item")]
-    public async Task<IActionResult> GetSampleItem(CancellationToken ct)
+    public async Task<IActionResult> GetSampleItem([FromQuery] int? skip, CancellationToken ct)
     {
         var companyId = GetCompanyId();
         if (companyId == null) return Unauthorized(ApiResponse<string>.Fail("Empresa no identificada."));
 
-        var isSandbox = await IsSandboxModeAsync();
+        var items = await _db.ItemOverrides
+            .Where(m => m.CompanyId == companyId.Value)
+            .OrderBy(m => m.QboItemName)
+            .ToListAsync(ct);
 
-        if (isSandbox)
+        if (items.Count == 0)
+            return NotFound(ApiResponse<string>.Fail("No hay items sincronizados. Sincroniza con QuickBooks primero."));
+
+        var idx = (skip ?? 0) % items.Count;
+        var it = items[idx];
+
+        var fields = new Dictionary<string, string>
         {
-            var sample = new
-            {
-                id = "7",
-                displayName = "Servicio de Consultoria",
-                fields = new Dictionary<string, string>
-                {
-                    ["Name"] = "Servicio de Consultoria",
-                    ["Description"] = "Horas de consultoria profesional",
-                    ["Type"] = "Service",
-                    ["UnitPrice"] = "5000.00",
-                    ["Sku"] = "CONS-001",
-                    ["Active"] = "true",
-                    ["Taxable"] = "true",
-                    ["CustomField.1"] = ""
-                }
-            };
-            return Ok(ApiResponse<object>.Ok(sample));
-        }
+            ["Id"] = it.QboItemId,
+            ["Name"] = it.QboItemName,
+            ["UnitMeasureOverride"] = it.UnitMeasureOverride?.ToString() ?? "",
+            ["GoodServiceIndicator"] = it.GoodServiceIndicatorOverride?.ToString() ?? "",
+            ["QboItemType"] = it.QboItemType ?? "",
+        };
 
-        return BadRequest(ApiResponse<string>.Fail("Consulta de muestra en modo produccion aun no implementada."));
+        return Ok(ApiResponse<object>.Ok(new { id = it.QboItemId, displayName = it.QboItemName, fields, totalCount = items.Count }));
     }
 
     /// <summary>
@@ -637,97 +634,149 @@ public class QboController : EigdoControllerBase
 
         int customersAdded = 0, vendorsAdded = 0, taxCodesAdded = 0, itemsAdded = 0;
 
-        if (isSandbox)
+        // Always use real QBO API — no more fake sandbox data
+        try
         {
-            // Generate sandbox data
-            var sandboxCustomers = new[]
-            {
-                ("cust_1", "Distribuidora Nacional SRL"), ("cust_2", "Comercial El Sol"),
-                ("cust_3", "Restaurante La Isla"), ("cust_4", "Farmacia Central"),
-                ("cust_5", "Supermercados Unidos"), ("cust_6", "Hotel Paraiso"),
-            };
+            connection = await EnsureValidToken(connection!, ct);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ApiResponse<string>.Fail(ex.Message));
+        }
 
-            foreach (var (id, name) in sandboxCustomers)
+        var accessToken = _encryption.Decrypt(connection!.AccessTokenEncrypted);
+        var apiBase = isSandbox
+            ? "https://sandbox-quickbooks.api.intuit.com"
+            : "https://quickbooks.api.intuit.com";
+
+        // Helper to query QBO
+        async Task<System.Text.Json.JsonElement?> QueryQbo(string qboQuery)
+        {
+            var url = $"{apiBase}/v3/company/{connection.RealmId}/query?query={Uri.EscapeDataString(qboQuery)}&minorversion=73";
+            var client = _httpClientFactory.CreateClient();
+            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+            client.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+            var resp = await client.GetAsync(url, ct);
+            if (!resp.IsSuccessStatusCode)
             {
-                var exists = await _db.CustomerMappings.AnyAsync(m => m.CompanyId == companyId.Value && m.QboCustomerId == id, ct);
+                var errBody = await resp.Content.ReadAsStringAsync(ct);
+                _logger.LogWarning("QBO sync query failed: HTTP {Status} for {Query} — {Body}", (int)resp.StatusCode, qboQuery, errBody);
+                return null;
+            }
+            var body = await resp.Content.ReadAsStringAsync(ct);
+            var doc = System.Text.Json.JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("QueryResponse", out var qr))
+                return qr;
+            return null;
+        }
+
+        // Sync Customers
+        var custResp = await QueryQbo("SELECT Id, DisplayName, CompanyName, PrimaryEmailAddr, PrimaryPhone, BillAddr, Notes FROM Customer WHERE Active = true ORDERBY MetaData.LastUpdatedTime DESC MAXRESULTS 500");
+        if (custResp?.TryGetProperty("Customer", out var customers) == true)
+        {
+            foreach (var c in customers.EnumerateArray())
+            {
+                var qboId = c.GetProperty("Id").GetString()!;
+                var name = c.TryGetProperty("DisplayName", out var dn) ? dn.GetString() ?? qboId : qboId;
+                var exists = await _db.CustomerMappings.AnyAsync(m => m.CompanyId == companyId.Value && m.QboCustomerId == qboId, ct);
                 if (!exists)
                 {
                     _db.CustomerMappings.Add(new Domain.Entities.Mapping.CustomerMapping
                     {
-                        CompanyId = companyId.Value, QboCustomerId = id, QboDisplayName = name,
+                        CompanyId = companyId.Value, QboCustomerId = qboId, QboDisplayName = name,
                         TipoComprobante = Domain.Enums.EcfType.E32
                     });
                     customersAdded++;
                 }
             }
+        }
 
-            var sandboxVendors = new[]
+        // Sync Vendors
+        var vendResp = await QueryQbo("SELECT Id, DisplayName, CompanyName, PrimaryEmailAddr, PrimaryPhone, BillAddr, Notes FROM Vendor WHERE Active = true ORDERBY MetaData.LastUpdatedTime DESC MAXRESULTS 500");
+        if (vendResp?.TryGetProperty("Vendor", out var vendors) == true)
+        {
+            foreach (var v in vendors.EnumerateArray())
             {
-                ("vend_1", "Importadora ABC SRL"), ("vend_2", "Servicios Profesionales JM"),
-                ("vend_3", "Suministros de Oficina RD"), ("vend_4", "Consultores Legales DR"),
-            };
-
-            foreach (var (id, name) in sandboxVendors)
-            {
-                var exists = await _db.VendorMappings.AnyAsync(m => m.CompanyId == companyId.Value && m.QboVendorId == id, ct);
+                var qboId = v.GetProperty("Id").GetString()!;
+                var name = v.TryGetProperty("DisplayName", out var dn) ? dn.GetString() ?? qboId : qboId;
+                var exists = await _db.VendorMappings.AnyAsync(m => m.CompanyId == companyId.Value && m.QboVendorId == qboId, ct);
                 if (!exists)
                 {
                     _db.VendorMappings.Add(new Domain.Entities.Mapping.VendorMapping
                     {
-                        CompanyId = companyId.Value, QboVendorId = id, QboDisplayName = name,
+                        CompanyId = companyId.Value, QboVendorId = qboId, QboDisplayName = name,
                         TipoComprobante = Domain.Enums.EcfType.E41
                     });
                     vendorsAdded++;
                 }
             }
+        }
 
-            var sandboxTaxCodes = new[]
+        // Sync Tax Codes
+        var taxResp = await QueryQbo("SELECT Id, Name FROM TaxCode WHERE Active = true MAXRESULTS 100");
+        if (taxResp?.TryGetProperty("TaxCode", out var taxCodes) == true)
+        {
+            foreach (var t in taxCodes.EnumerateArray())
             {
-                ("tax_1", "ITBIS 18%", 18m, 1), ("tax_2", "ITBIS 16%", 16m, 2),
-                ("tax_3", "Exento", 0m, 0), ("tax_4", "ITBIS 0%", 0m, 3),
-            };
-
-            foreach (var (id, name, rate, indicator) in sandboxTaxCodes)
-            {
-                var exists = await _db.TaxCodeMappings.AnyAsync(m => m.CompanyId == companyId.Value && m.QboTaxCodeId == id, ct);
+                var qboId = t.GetProperty("Id").GetString()!;
+                var name = t.TryGetProperty("Name", out var n) ? n.GetString() ?? qboId : qboId;
+                var exists = await _db.TaxCodeMappings.AnyAsync(m => m.CompanyId == companyId.Value && m.QboTaxCodeId == qboId, ct);
                 if (!exists)
                 {
                     _db.TaxCodeMappings.Add(new Domain.Entities.Mapping.TaxCodeMapping
                     {
-                        CompanyId = companyId.Value, QboTaxCodeId = id, QboTaxCodeName = name,
-                        QboTaxRate = rate, BillingIndicator = (Domain.Enums.BillingIndicator)indicator
+                        CompanyId = companyId.Value, QboTaxCodeId = qboId, QboTaxCodeName = name,
+                        QboTaxRate = 0, BillingIndicator = Domain.Enums.BillingIndicator.NonBillable
                     });
                     taxCodesAdded++;
                 }
             }
+        }
 
-            var sandboxItems = new[]
+        // Sync Items
+        var itemResp = await QueryQbo("SELECT Id, Name, Type FROM Item WHERE Active = true ORDERBY MetaData.LastUpdatedTime DESC MAXRESULTS 500");
+        if (itemResp?.TryGetProperty("Item", out var items) == true)
+        {
+            foreach (var it in items.EnumerateArray())
             {
-                ("item_1", "Servicio de Consultoria"), ("item_2", "Producto A"),
-                ("item_3", "Mantenimiento Mensual"), ("item_4", "Licencia Software"),
-            };
-
-            foreach (var (id, name) in sandboxItems)
-            {
-                var exists = await _db.ItemOverrides.AnyAsync(m => m.CompanyId == companyId.Value && m.QboItemId == id, ct);
+                var qboId = it.GetProperty("Id").GetString()!;
+                var name = it.TryGetProperty("Name", out var n) ? n.GetString() ?? qboId : qboId;
+                var itemType = it.TryGetProperty("Type", out var tp) ? tp.GetString() : null;
+                var exists = await _db.ItemOverrides.AnyAsync(m => m.CompanyId == companyId.Value && m.QboItemId == qboId, ct);
                 if (!exists)
                 {
                     _db.ItemOverrides.Add(new Domain.Entities.Mapping.ItemOverride
                     {
-                        CompanyId = companyId.Value, QboItemId = id, QboItemName = name
+                        CompanyId = companyId.Value, QboItemId = qboId, QboItemName = name, QboItemType = itemType
                     });
                     itemsAdded++;
                 }
             }
-
-            await _db.SaveChangesAsync(ct);
         }
-        else
+
+        await _db.SaveChangesAsync(ct);
+
+        // Update last sync timestamp
+        connection.LastSyncUtc = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
+
+        // Log if any queries failed (returned null)
+        if (custResp == null || vendResp == null || taxResp == null || itemResp == null)
         {
-            // TODO: Real QBO sync via API queries
-            connection = await EnsureValidToken(connection!, ct);
-            // Query customers, vendors, taxcodes, items from QBO and create mappings
-            // This will be implemented when we have real QBO integration
+            _logger.LogWarning("QBO sync: Some queries failed. customers={C} vendors={V} taxes={T} items={I}",
+                custResp != null, vendResp != null, taxResp != null, itemResp != null);
+            var failedParts = new List<string>();
+            if (custResp == null) failedParts.Add("clientes");
+            if (vendResp == null) failedParts.Add("proveedores");
+            if (taxResp == null) failedParts.Add("impuestos");
+            if (itemResp == null) failedParts.Add("items");
+
+            return Ok(ApiResponse<object>.Ok(new
+            {
+                customersAdded, vendorsAdded, taxCodesAdded, itemsAdded,
+                message = $"Sincronizacion parcial: {customersAdded} clientes, {vendorsAdded} proveedores, {taxCodesAdded} impuestos, {itemsAdded} items. Error en: {string.Join(", ", failedParts)}. Verifica la autorizacion en QuickBooks.",
+                partial = true
+            }));
         }
 
         return Ok(ApiResponse<object>.Ok(new
