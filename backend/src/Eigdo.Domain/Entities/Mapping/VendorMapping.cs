@@ -10,6 +10,7 @@ public class VendorMapping : BaseEntity
     public string QboDisplayName { get; set; } = string.Empty;
     public string? QboEmail { get; set; }
     public string? QboPhone { get; set; }
+    public string? QboTaxId { get; set; }  // TaxIdentifier — masked by Intuit (e.g. XXXX-1234)
 
     // Fiscal data (manual)
     public string? Rnc { get; set; }

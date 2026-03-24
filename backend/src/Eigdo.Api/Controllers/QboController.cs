@@ -542,6 +542,7 @@ public class QboController : EigdoControllerBase
             ["Id"] = c.QboCustomerId,
             ["DisplayName"] = c.QboDisplayName,
             ["CompanyName"] = c.RazonSocialDgii ?? "",
+            ["PrimaryTaxIdentifier"] = c.QboTaxId ?? "",
             ["PrimaryEmailAddr"] = c.QboEmail ?? "",
             ["PrimaryPhone"] = c.QboPhone ?? "",
         };
@@ -574,6 +575,7 @@ public class QboController : EigdoControllerBase
             ["Id"] = v.QboVendorId,
             ["DisplayName"] = v.QboDisplayName,
             ["CompanyName"] = v.RazonSocialDgii ?? "",
+            ["TaxIdentifier"] = v.QboTaxId ?? "",
             ["PrimaryEmailAddr"] = v.QboEmail ?? "",
             ["PrimaryPhone"] = v.QboPhone ?? "",
         };
@@ -689,7 +691,7 @@ public class QboController : EigdoControllerBase
         }
 
         // Sync Customers
-        var custResp = await QueryQbo("SELECT Id, DisplayName, CompanyName, PrimaryEmailAddr, PrimaryPhone, Notes FROM Customer WHERE Active = true ORDERBY MetaData.LastUpdatedTime DESC MAXRESULTS 500");
+        var custResp = await QueryQbo("SELECT Id, DisplayName, CompanyName, PrimaryEmailAddr, PrimaryPhone, Notes, PrimaryTaxIdentifier FROM Customer WHERE Active = true ORDERBY MetaData.LastUpdatedTime DESC MAXRESULTS 500");
         if (custResp?.TryGetProperty("Customer", out var customers) == true)
         {
             foreach (var c in customers.EnumerateArray())
@@ -702,6 +704,7 @@ public class QboController : EigdoControllerBase
                 var phone = c.TryGetProperty("PrimaryPhone", out var ph) && ph.ValueKind == System.Text.Json.JsonValueKind.Object
                     ? (ph.TryGetProperty("FreeFormNumber", out var ffn) ? ffn.GetString() : null)
                     : null;
+                var taxId = c.TryGetProperty("PrimaryTaxIdentifier", out var ti) ? ti.GetString() : null;
 
                 var existing = await _db.CustomerMappings
                     .FirstOrDefaultAsync(m => m.CompanyId == companyId.Value && m.QboCustomerId == qboId, ct);
@@ -712,7 +715,7 @@ public class QboController : EigdoControllerBase
                     _db.CustomerMappings.Add(new Domain.Entities.Mapping.CustomerMapping
                     {
                         CompanyId = companyId.Value, QboCustomerId = qboId,
-                        QboDisplayName = displayName, QboEmail = email, QboPhone = phone,
+                        QboDisplayName = displayName, QboEmail = email, QboPhone = phone, QboTaxId = taxId,
                         RazonSocialDgii = razonSocial,
                         TipoComprobante = Domain.Enums.EcfType.E32
                     });
@@ -724,6 +727,7 @@ public class QboController : EigdoControllerBase
                     existing.QboDisplayName = displayName;
                     existing.QboEmail = email;
                     existing.QboPhone = phone;
+                    existing.QboTaxId = taxId;
                     if (string.IsNullOrWhiteSpace(existing.RazonSocialDgii))
                         existing.RazonSocialDgii = ResolveRazonSocial(c, custFieldMappings, displayName);
                     existing.UpdatedAtUtc = DateTime.UtcNow;
@@ -732,7 +736,7 @@ public class QboController : EigdoControllerBase
         }
 
         // Sync Vendors
-        var vendResp = await QueryQbo("SELECT Id, DisplayName, CompanyName, PrimaryEmailAddr, PrimaryPhone, Notes FROM Vendor WHERE Active = true ORDERBY MetaData.LastUpdatedTime DESC MAXRESULTS 500");
+        var vendResp = await QueryQbo("SELECT Id, DisplayName, CompanyName, PrimaryEmailAddr, PrimaryPhone, Notes, TaxIdentifier FROM Vendor WHERE Active = true ORDERBY MetaData.LastUpdatedTime DESC MAXRESULTS 500");
         if (vendResp?.TryGetProperty("Vendor", out var vendors) == true)
         {
             foreach (var v in vendors.EnumerateArray())
@@ -745,6 +749,7 @@ public class QboController : EigdoControllerBase
                 var phone = v.TryGetProperty("PrimaryPhone", out var ph) && ph.ValueKind == System.Text.Json.JsonValueKind.Object
                     ? (ph.TryGetProperty("FreeFormNumber", out var ffn) ? ffn.GetString() : null)
                     : null;
+                var taxId = v.TryGetProperty("TaxIdentifier", out var vti) ? vti.GetString() : null;
 
                 var existing = await _db.VendorMappings
                     .FirstOrDefaultAsync(m => m.CompanyId == companyId.Value && m.QboVendorId == qboId, ct);
@@ -755,7 +760,7 @@ public class QboController : EigdoControllerBase
                     _db.VendorMappings.Add(new Domain.Entities.Mapping.VendorMapping
                     {
                         CompanyId = companyId.Value, QboVendorId = qboId,
-                        QboDisplayName = displayName, QboEmail = email, QboPhone = phone,
+                        QboDisplayName = displayName, QboEmail = email, QboPhone = phone, QboTaxId = taxId,
                         RazonSocialDgii = razonSocial,
                         TipoComprobante = Domain.Enums.EcfType.E41
                     });
@@ -767,6 +772,7 @@ public class QboController : EigdoControllerBase
                     existing.QboDisplayName = displayName;
                     existing.QboEmail = email;
                     existing.QboPhone = phone;
+                    existing.QboTaxId = taxId;
                     if (string.IsNullOrWhiteSpace(existing.RazonSocialDgii))
                         existing.RazonSocialDgii = ResolveRazonSocial(v, vendFieldMappings, displayName);
                     existing.UpdatedAtUtc = DateTime.UtcNow;
