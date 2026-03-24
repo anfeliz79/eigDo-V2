@@ -8,6 +8,8 @@ public class CustomerMapping : BaseEntity
     public Guid CompanyId { get; set; }
     public string QboCustomerId { get; set; } = string.Empty;
     public string QboDisplayName { get; set; } = string.Empty;
+    public string? QboEmail { get; set; }
+    public string? QboPhone { get; set; }
 
     // Fiscal data (manual)
     public string? Rnc { get; set; }

@@ -1,6 +1,7 @@
 using Eigdo.Application.DTOs;
 using Eigdo.Application.DTOs.Qbo;
 using Eigdo.Application.Interfaces;
+using Eigdo.Application.Services;
 using Eigdo.Domain.Entities.Integration;
 using Eigdo.Domain.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -27,9 +28,10 @@ public class QboController : EigdoControllerBase
     private readonly IPlatformConfigProvider _platformConfig;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IEncryptionService _encryption;
+    private readonly FieldMappingService _fieldMappings;
     private readonly ILogger<QboController> _logger;
 
-    public QboController(IQboClient qboClient, IEigdoDbContext db, IAuditService audit, IConfiguration config, IQboConfigProvider qboConfig, IPlatformConfigProvider platformConfig, IHttpClientFactory httpClientFactory, IEncryptionService encryption, ILogger<QboController> logger)
+    public QboController(IQboClient qboClient, IEigdoDbContext db, IAuditService audit, IConfiguration config, IQboConfigProvider qboConfig, IPlatformConfigProvider platformConfig, IHttpClientFactory httpClientFactory, IEncryptionService encryption, FieldMappingService fieldMappings, ILogger<QboController> logger)
     {
         _qboClient = qboClient;
         _db = db;
@@ -39,6 +41,7 @@ public class QboController : EigdoControllerBase
         _platformConfig = platformConfig;
         _httpClientFactory = httpClientFactory;
         _encryption = encryption;
+        _fieldMappings = fieldMappings;
         _logger = logger;
     }
 
@@ -534,17 +537,13 @@ public class QboController : EigdoControllerBase
         var idx = (skip ?? 0) % customers.Count;
         var c = customers[idx];
 
-        // Return actual QBO field names (as synced from QuickBooks API).
-        // CompanyName value comes from the synced RazonSocialDgii since we set it from CompanyName during sync.
-        // PrimaryEmailAddr, PrimaryPhone, Notes are available from QBO but not stored in eigdo DB.
         var fields = new Dictionary<string, string>
         {
             ["Id"] = c.QboCustomerId,
             ["DisplayName"] = c.QboDisplayName,
             ["CompanyName"] = c.RazonSocialDgii ?? "",
-            ["PrimaryEmailAddr"] = "",
-            ["PrimaryPhone"] = "",
-            ["Notes"] = "",
+            ["PrimaryEmailAddr"] = c.QboEmail ?? "",
+            ["PrimaryPhone"] = c.QboPhone ?? "",
         };
 
         return Ok(ApiResponse<object>.Ok(new { id = c.QboCustomerId, displayName = c.QboDisplayName, fields, totalCount = customers.Count }));
@@ -570,15 +569,13 @@ public class QboController : EigdoControllerBase
         var idx = (skip ?? 0) % vendors.Count;
         var v = vendors[idx];
 
-        // Return actual QBO field names (as synced from QuickBooks API).
         var fields = new Dictionary<string, string>
         {
             ["Id"] = v.QboVendorId,
             ["DisplayName"] = v.QboDisplayName,
             ["CompanyName"] = v.RazonSocialDgii ?? "",
-            ["PrimaryEmailAddr"] = "",
-            ["PrimaryPhone"] = "",
-            ["Notes"] = "",
+            ["PrimaryEmailAddr"] = v.QboEmail ?? "",
+            ["PrimaryPhone"] = v.QboPhone ?? "",
         };
 
         return Ok(ApiResponse<object>.Ok(new { id = v.QboVendorId, displayName = v.QboDisplayName, fields, totalCount = vendors.Count }));
@@ -673,6 +670,24 @@ public class QboController : EigdoControllerBase
             return null;
         }
 
+        // Load FieldMappings for this company (Customer and Vendor) to determine RazonSocial source
+        var custFieldMappings = (await _fieldMappings.GetMappingsAsync(companyId.Value, "Customer", ct)).Result ?? new();
+        var vendFieldMappings = (await _fieldMappings.GetMappingsAsync(companyId.Value, "Vendor", ct)).Result ?? new();
+
+        // Helper: resolve RazonSocial from QBO record given configured field mappings
+        string ResolveRazonSocial(System.Text.Json.JsonElement record, List<Eigdo.Application.DTOs.Mapping.FieldMappingResponse> mappings, string displayNameFallback)
+        {
+            var razonMapping = mappings.FirstOrDefault(m => m.TargetField == "RazonSocial");
+            if (razonMapping?.SourceType == "QboField" && !string.IsNullOrEmpty(razonMapping.QboFieldPath))
+            {
+                if (record.TryGetProperty(razonMapping.QboFieldPath, out var mapped) && !string.IsNullOrWhiteSpace(mapped.GetString()))
+                    return mapped.GetString()!;
+            }
+            // Default: CompanyName ?? DisplayName
+            var companyName = record.TryGetProperty("CompanyName", out var cn) ? cn.GetString() : null;
+            return !string.IsNullOrWhiteSpace(companyName) ? companyName : displayNameFallback;
+        }
+
         // Sync Customers
         var custResp = await QueryQbo("SELECT Id, DisplayName, CompanyName, PrimaryEmailAddr, PrimaryPhone, Notes FROM Customer WHERE Active = true ORDERBY MetaData.LastUpdatedTime DESC MAXRESULTS 500");
         if (custResp?.TryGetProperty("Customer", out var customers) == true)
@@ -681,18 +696,35 @@ public class QboController : EigdoControllerBase
             {
                 var qboId = c.GetProperty("Id").GetString()!;
                 var displayName = c.TryGetProperty("DisplayName", out var dn) ? dn.GetString() ?? qboId : qboId;
-                var companyName = c.TryGetProperty("CompanyName", out var cn) ? cn.GetString() : null;
-                var razonSocial = !string.IsNullOrWhiteSpace(companyName) ? companyName : displayName;
-                var exists = await _db.CustomerMappings.AnyAsync(m => m.CompanyId == companyId.Value && m.QboCustomerId == qboId, ct);
-                if (!exists)
+                var email = c.TryGetProperty("PrimaryEmailAddr", out var ea) && ea.ValueKind == System.Text.Json.JsonValueKind.Object
+                    ? (ea.TryGetProperty("Address", out var addr) ? addr.GetString() : null)
+                    : null;
+                var phone = c.TryGetProperty("PrimaryPhone", out var ph) && ph.ValueKind == System.Text.Json.JsonValueKind.Object
+                    ? (ph.TryGetProperty("FreeFormNumber", out var ffn) ? ffn.GetString() : null)
+                    : null;
+
+                var existing = await _db.CustomerMappings
+                    .FirstOrDefaultAsync(m => m.CompanyId == companyId.Value && m.QboCustomerId == qboId, ct);
+
+                if (existing == null)
                 {
+                    var razonSocial = ResolveRazonSocial(c, custFieldMappings, displayName);
                     _db.CustomerMappings.Add(new Domain.Entities.Mapping.CustomerMapping
                     {
-                        CompanyId = companyId.Value, QboCustomerId = qboId, QboDisplayName = displayName,
+                        CompanyId = companyId.Value, QboCustomerId = qboId,
+                        QboDisplayName = displayName, QboEmail = email, QboPhone = phone,
                         RazonSocialDgii = razonSocial,
                         TipoComprobante = Domain.Enums.EcfType.E32
                     });
                     customersAdded++;
+                }
+                else
+                {
+                    // Update QBO-sourced fields only; never overwrite manually entered Rnc/RazonSocialDgii
+                    existing.QboDisplayName = displayName;
+                    existing.QboEmail = email;
+                    existing.QboPhone = phone;
+                    existing.UpdatedAtUtc = DateTime.UtcNow;
                 }
             }
         }
@@ -705,18 +737,35 @@ public class QboController : EigdoControllerBase
             {
                 var qboId = v.GetProperty("Id").GetString()!;
                 var displayName = v.TryGetProperty("DisplayName", out var dn) ? dn.GetString() ?? qboId : qboId;
-                var companyName = v.TryGetProperty("CompanyName", out var cn) ? cn.GetString() : null;
-                var razonSocial = !string.IsNullOrWhiteSpace(companyName) ? companyName : displayName;
-                var exists = await _db.VendorMappings.AnyAsync(m => m.CompanyId == companyId.Value && m.QboVendorId == qboId, ct);
-                if (!exists)
+                var email = v.TryGetProperty("PrimaryEmailAddr", out var ea) && ea.ValueKind == System.Text.Json.JsonValueKind.Object
+                    ? (ea.TryGetProperty("Address", out var addr) ? addr.GetString() : null)
+                    : null;
+                var phone = v.TryGetProperty("PrimaryPhone", out var ph) && ph.ValueKind == System.Text.Json.JsonValueKind.Object
+                    ? (ph.TryGetProperty("FreeFormNumber", out var ffn) ? ffn.GetString() : null)
+                    : null;
+
+                var existing = await _db.VendorMappings
+                    .FirstOrDefaultAsync(m => m.CompanyId == companyId.Value && m.QboVendorId == qboId, ct);
+
+                if (existing == null)
                 {
+                    var razonSocial = ResolveRazonSocial(v, vendFieldMappings, displayName);
                     _db.VendorMappings.Add(new Domain.Entities.Mapping.VendorMapping
                     {
-                        CompanyId = companyId.Value, QboVendorId = qboId, QboDisplayName = displayName,
+                        CompanyId = companyId.Value, QboVendorId = qboId,
+                        QboDisplayName = displayName, QboEmail = email, QboPhone = phone,
                         RazonSocialDgii = razonSocial,
                         TipoComprobante = Domain.Enums.EcfType.E41
                     });
                     vendorsAdded++;
+                }
+                else
+                {
+                    // Update QBO-sourced fields only; never overwrite manually entered Rnc/RazonSocialDgii
+                    existing.QboDisplayName = displayName;
+                    existing.QboEmail = email;
+                    existing.QboPhone = phone;
+                    existing.UpdatedAtUtc = DateTime.UtcNow;
                 }
             }
         }
