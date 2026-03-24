@@ -534,14 +534,17 @@ public class QboController : EigdoControllerBase
         var idx = (skip ?? 0) % customers.Count;
         var c = customers[idx];
 
+        // Return actual QBO field names (as synced from QuickBooks API).
+        // CompanyName value comes from the synced RazonSocialDgii since we set it from CompanyName during sync.
+        // PrimaryEmailAddr, PrimaryPhone, Notes are available from QBO but not stored in eigdo DB.
         var fields = new Dictionary<string, string>
         {
             ["Id"] = c.QboCustomerId,
             ["DisplayName"] = c.QboDisplayName,
-            ["RNC"] = c.Rnc ?? "",
-            ["RazonSocial"] = c.RazonSocialDgii ?? "",
-            ["TipoComprobante"] = c.TipoComprobante.ToString(),
-            ["Excluido"] = c.Excluido.ToString(),
+            ["CompanyName"] = c.RazonSocialDgii ?? "",
+            ["PrimaryEmailAddr"] = "",
+            ["PrimaryPhone"] = "",
+            ["Notes"] = "",
         };
 
         return Ok(ApiResponse<object>.Ok(new { id = c.QboCustomerId, displayName = c.QboDisplayName, fields, totalCount = customers.Count }));
@@ -567,15 +570,15 @@ public class QboController : EigdoControllerBase
         var idx = (skip ?? 0) % vendors.Count;
         var v = vendors[idx];
 
+        // Return actual QBO field names (as synced from QuickBooks API).
         var fields = new Dictionary<string, string>
         {
             ["Id"] = v.QboVendorId,
             ["DisplayName"] = v.QboDisplayName,
-            ["RNC"] = v.Rnc ?? "",
-            ["RazonSocial"] = v.RazonSocialDgii ?? "",
-            ["TipoComprobante"] = v.TipoComprobante.ToString(),
-            ["RetentionItbisRate"] = v.RetentionItbisRate?.ToString("F2") ?? "",
-            ["RetentionIsrRate"] = v.RetentionIsrRate?.ToString("F2") ?? "",
+            ["CompanyName"] = v.RazonSocialDgii ?? "",
+            ["PrimaryEmailAddr"] = "",
+            ["PrimaryPhone"] = "",
+            ["Notes"] = "",
         };
 
         return Ok(ApiResponse<object>.Ok(new { id = v.QboVendorId, displayName = v.QboDisplayName, fields, totalCount = vendors.Count }));

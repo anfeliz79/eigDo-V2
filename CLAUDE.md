@@ -318,6 +318,25 @@ Each settings/mapping page follows:
 ### Webhook Verification
 HMAC-SHA256 of request body with verifier token, compared to `intuit-signature` header.
 
+### QBO Field Masking (CRITICAL)
+- **`PrimaryTaxIdentifier`** (Customer) and **`TaxIdentifier`** (Vendor) are **MASKED** by Intuit in all API responses. Only the last 4-5 characters are shown (e.g. `XXXX-1234`). RNC **cannot** be obtained from QBO. Users must enter it manually and validate via DGII.
+- **`BillAddr`** cannot be referenced in SELECT list of QBO SQL queries — causes `QueryValidationError: Property BillAddr not found`. It IS returned in `SELECT *` but not individually selectable.
+- **`CompanyName`** (Customer/Vendor) is the best source for `RazonSocialDgii` — set as primary during sync, with `DisplayName` as fallback.
+
+### QBO Sample Endpoints (`GET /api/Qbo/sample/{customer|vendor|item}`)
+These return data from the local eigdo DB (CustomerMapping / VendorMapping / ItemOverride), not live QBO calls. The `fields` dict uses actual QBO field names so Field Mapping dropdowns show correct options: `Id`, `DisplayName`, `CompanyName`, `PrimaryEmailAddr`, `PrimaryPhone`, `Notes`. Note: `PrimaryEmailAddr`, `PrimaryPhone`, `Notes` are available from QBO but not stored in eigdo DB currently.
+
+### Staging Environment
+- Staging API: `https://staging-api.eigdo.com` (port 5100 on VPS via nginx)
+- Staging App: `https://staging.eigdo.com`
+- Frontend env: `NEXT_PUBLIC_API_URL=https://staging-api.eigdo.com/api` (must be set before `npm run build`)
+- OAuth callback for staging: `https://staging-api.eigdo.com/api/qbo/callback`
+
+### FieldMappingService
+- `ResolveAllFieldsAsync` exists but is NOT called during sync — sync uses hardcoded `CompanyName ?? DisplayName` logic
+- FieldMappings UI is functional (save/load) but not wired to sync yet
+- Full reference: `docs/mapping/qbo-field-reference.md`
+
 ---
 
 ## Backend Services (Fiscal Engine)
@@ -434,6 +453,10 @@ Frontend apps need `NEXT_PUBLIC_API_URL` set at BUILD time (not runtime).
 13. **Next.js standalone output**: All 3 frontends use `output: "standalone"` in `next.config.ts`. Deploy the entire `.next/standalone/` contents as root dir, then copy `.next/static/` into `.next/static` and `public/` into `public/` at the same level as `server.js`
 14. **Standalone WorkingDirectory**: systemd services must point to the dir containing `server.js`, NOT `.next/standalone` — the structure is `server.js + .next/ + node_modules/ + public/`
 15. **macOS tar xattr warnings**: Tarballs created on macOS produce `LIBARCHIVE.xattr.com.apple.provenance` warnings on Linux — harmless, ignore
+20. **QBO TaxIdentifier masked**: `PrimaryTaxIdentifier` (Customer) and `TaxIdentifier` (Vendor) return masked values (e.g. `XXXX-1234`) — never try to use these for RNC. Manual entry + DGII validation is the only correct approach
+21. **QBO BillAddr not selectable**: Cannot use `BillAddr` in a SELECT field list in QBO SQL queries — causes HTTP 400 `QueryValidationError`. Remove it; address data must come from other sources
+22. **QBO sample endpoints use DB data**: `GET /api/Qbo/sample/customer` reads from `CustomerMappings` table (not live QBO API). The fields dict now uses QBO field names (`CompanyName`, `DisplayName`, etc.) so the Field Mapping UI dropdown shows correct options
+23. **ChunkLoadError after Next.js deploy**: Caused by stale chunks from previous build. Fix: `rm -rf $DEST/.next/static && cp -r $BUILD/.next/static $DEST/.next/static` then restart service
 16. **EF migrations in production**: `Program.cs` runs `MigrateAsync()` on every startup (not just Development). This creates tables on first deploy automatically
 17. **PostgreSQL schema grants**: After creating the eigdo user, must also run `GRANT ALL ON SCHEMA public TO eigdo` for EF Core to create tables
 18. **VPS SSH access**: Server `69.167.167.18` (repulsive-yaks.metalseed.io), root, password `Cl@ve112019`. Previous hostname credentials (metalseed) were stale — the panel password was correct
