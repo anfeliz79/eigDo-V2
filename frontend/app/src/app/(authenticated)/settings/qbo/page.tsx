@@ -56,7 +56,7 @@ export default function QboSettingsPage() {
   const handleDisconnect = async () => {
     try {
       await api.disconnectQbo();
-      setStatus({ connected: false, sandbox: status?.sandbox });
+      setStatus({ connected: false, configured: status?.configured, sandbox: status?.sandbox });
       setMessage({ type: 'success', text: 'QuickBooks desconectado exitosamente' });
     } catch (err) {
       setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Error al desconectar' });
