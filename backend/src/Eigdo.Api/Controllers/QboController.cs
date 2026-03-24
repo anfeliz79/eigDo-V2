@@ -671,7 +671,7 @@ public class QboController : EigdoControllerBase
         }
 
         // Sync Customers
-        var custResp = await QueryQbo("SELECT Id, DisplayName, CompanyName, PrimaryEmailAddr, PrimaryPhone, BillAddr, Notes FROM Customer WHERE Active = true ORDERBY MetaData.LastUpdatedTime DESC MAXRESULTS 500");
+        var custResp = await QueryQbo("SELECT Id, DisplayName, CompanyName, PrimaryEmailAddr, PrimaryPhone, Notes FROM Customer WHERE Active = true ORDERBY MetaData.LastUpdatedTime DESC MAXRESULTS 500");
         if (custResp?.TryGetProperty("Customer", out var customers) == true)
         {
             foreach (var c in customers.EnumerateArray())
@@ -692,7 +692,7 @@ public class QboController : EigdoControllerBase
         }
 
         // Sync Vendors
-        var vendResp = await QueryQbo("SELECT Id, DisplayName, CompanyName, PrimaryEmailAddr, PrimaryPhone, BillAddr, Notes FROM Vendor WHERE Active = true ORDERBY MetaData.LastUpdatedTime DESC MAXRESULTS 500");
+        var vendResp = await QueryQbo("SELECT Id, DisplayName, CompanyName, PrimaryEmailAddr, PrimaryPhone, Notes FROM Vendor WHERE Active = true ORDERBY MetaData.LastUpdatedTime DESC MAXRESULTS 500");
         if (vendResp?.TryGetProperty("Vendor", out var vendors) == true)
         {
             foreach (var v in vendors.EnumerateArray())
