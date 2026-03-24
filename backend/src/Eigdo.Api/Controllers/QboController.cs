@@ -677,13 +677,16 @@ public class QboController : EigdoControllerBase
             foreach (var c in customers.EnumerateArray())
             {
                 var qboId = c.GetProperty("Id").GetString()!;
-                var name = c.TryGetProperty("DisplayName", out var dn) ? dn.GetString() ?? qboId : qboId;
+                var displayName = c.TryGetProperty("DisplayName", out var dn) ? dn.GetString() ?? qboId : qboId;
+                var companyName = c.TryGetProperty("CompanyName", out var cn) ? cn.GetString() : null;
+                var razonSocial = !string.IsNullOrWhiteSpace(companyName) ? companyName : displayName;
                 var exists = await _db.CustomerMappings.AnyAsync(m => m.CompanyId == companyId.Value && m.QboCustomerId == qboId, ct);
                 if (!exists)
                 {
                     _db.CustomerMappings.Add(new Domain.Entities.Mapping.CustomerMapping
                     {
-                        CompanyId = companyId.Value, QboCustomerId = qboId, QboDisplayName = name,
+                        CompanyId = companyId.Value, QboCustomerId = qboId, QboDisplayName = displayName,
+                        RazonSocialDgii = razonSocial,
                         TipoComprobante = Domain.Enums.EcfType.E32
                     });
                     customersAdded++;
@@ -698,13 +701,16 @@ public class QboController : EigdoControllerBase
             foreach (var v in vendors.EnumerateArray())
             {
                 var qboId = v.GetProperty("Id").GetString()!;
-                var name = v.TryGetProperty("DisplayName", out var dn) ? dn.GetString() ?? qboId : qboId;
+                var displayName = v.TryGetProperty("DisplayName", out var dn) ? dn.GetString() ?? qboId : qboId;
+                var companyName = v.TryGetProperty("CompanyName", out var cn) ? cn.GetString() : null;
+                var razonSocial = !string.IsNullOrWhiteSpace(companyName) ? companyName : displayName;
                 var exists = await _db.VendorMappings.AnyAsync(m => m.CompanyId == companyId.Value && m.QboVendorId == qboId, ct);
                 if (!exists)
                 {
                     _db.VendorMappings.Add(new Domain.Entities.Mapping.VendorMapping
                     {
-                        CompanyId = companyId.Value, QboVendorId = qboId, QboDisplayName = name,
+                        CompanyId = companyId.Value, QboVendorId = qboId, QboDisplayName = displayName,
+                        RazonSocialDgii = razonSocial,
                         TipoComprobante = Domain.Enums.EcfType.E41
                     });
                     vendorsAdded++;
