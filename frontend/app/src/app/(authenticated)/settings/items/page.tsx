@@ -54,9 +54,9 @@ export default function ItemOverridesPage() {
     setSyncing(true);
     setMessage(null);
     try {
-      await api.syncQbo();
-      setMessage({ type: 'success', text: 'Items sincronizados desde QuickBooks' });
-      loadItems();
+      const result = await api.syncQbo();
+      setMessage({ type: result.partial ? 'error' : 'success', text: result.message });
+      if (!result.partial) loadItems();
     } catch (err) {
       setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Error al sincronizar' });
     } finally {

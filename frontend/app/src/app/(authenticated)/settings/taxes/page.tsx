@@ -57,9 +57,9 @@ export default function TaxMappingsPage() {
     setSyncing(true);
     setMessage(null);
     try {
-      await api.syncQbo();
-      setMessage({ type: 'success', text: 'Tax Codes sincronizados desde QuickBooks' });
-      loadMappings();
+      const result = await api.syncQbo();
+      setMessage({ type: result.partial ? 'error' : 'success', text: result.message });
+      if (!result.partial) loadMappings();
     } catch (err) {
       setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Error al sincronizar' });
     } finally {

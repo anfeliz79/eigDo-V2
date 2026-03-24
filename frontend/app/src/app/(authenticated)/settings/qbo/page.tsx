@@ -21,6 +21,7 @@ export default function QboSettingsPage() {
   const [subscription, setSubscription] = useState<{ planName?: string } | null>(null);
   const [isOnboarding, setIsOnboarding] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -42,23 +43,25 @@ export default function QboSettingsPage() {
 
   const handleConnect = async () => {
     setConnecting(true);
+    setMessage(null);
     try {
       const data = await api.getQboAuthUrl() as any;
       window.location.href = data.authUrl;
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Error al conectar');
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Error al conectar con QuickBooks' });
       setConnecting(false);
     }
   };
 
   const handleDisconnect = async () => {
-    if (!confirm('Deseas desconectar QuickBooks? Se detendran las emisiones automaticas.')) return;
     try {
       await api.disconnectQbo();
       setStatus({ connected: false, sandbox: status?.sandbox });
-      setMessage({ type: 'success', text: 'QuickBooks desconectado' });
+      setMessage({ type: 'success', text: 'QuickBooks desconectado exitosamente' });
     } catch (err) {
       setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Error al desconectar' });
+    } finally {
+      setShowDisconnectConfirm(false);
     }
   };
 
@@ -66,8 +69,11 @@ export default function QboSettingsPage() {
     setSyncing(true);
     setMessage(null);
     try {
-      await api.syncQbo();
-      setMessage({ type: 'success', text: 'Datos sincronizados exitosamente desde QuickBooks' });
+      const result = await api.syncQbo();
+      setMessage({
+        type: result.partial ? 'error' : 'success',
+        text: result.message,
+      });
       // Refresh status to get new lastSync timestamp
       const newStatus = await api.getQboStatus() as any;
       setStatus(newStatus);
@@ -93,7 +99,7 @@ export default function QboSettingsPage() {
     <div className="max-w-2xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">QuickBooks Online</h1>
-        <p className="text-gray-500 mt-1">Gestiona la conexion con tu cuenta de QuickBooks</p>
+        <p className="text-gray-500 mt-1">Gestiona la conexión con tu cuenta de QuickBooks</p>
       </div>
 
       {/* QBO not configured warning */}
@@ -105,7 +111,7 @@ export default function QboSettingsPage() {
           <div>
             <p className="text-sm font-semibold text-red-800">QuickBooks no configurado</p>
             <p className="text-sm text-red-700 mt-1">
-              El administrador debe configurar las credenciales de QuickBooks desde el panel de administracion antes de poder conectar.
+              El administrador debe configurar las credenciales de QuickBooks desde el panel de administración antes de poder conectar.
             </p>
           </div>
         </div>
@@ -118,7 +124,7 @@ export default function QboSettingsPage() {
             <path strokeLinecap="round" strokeLinejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" />
           </svg>
           <p className="text-sm text-blue-800">
-            <strong>Modo Sandbox:</strong> Conectaras con el entorno de pruebas de QuickBooks.
+            <strong>Modo Sandbox:</strong> Conectarás con el entorno de pruebas de QuickBooks.
           </p>
         </div>
       )}
@@ -156,7 +162,7 @@ export default function QboSettingsPage() {
             {status.lastSync && (
               <div className="bg-gray-50 rounded-lg p-4">
                 <p className="text-sm text-gray-600">
-                  <span className="font-medium">Ultima sincronizacion:</span>{' '}
+                  <span className="font-medium">Última sincronización:</span>{' '}
                   {new Date(status.lastSync).toLocaleString('es-DO')}
                 </p>
               </div>
@@ -191,7 +197,7 @@ export default function QboSettingsPage() {
                 )}
               </button>
               <button
-                onClick={handleDisconnect}
+                onClick={() => setShowDisconnectConfirm(true)}
                 className="px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition text-sm font-medium"
               >
                 Desconectar
@@ -209,14 +215,14 @@ export default function QboSettingsPage() {
             <div>
               <h3 className="text-lg font-semibold text-gray-900">QuickBooks no conectado</h3>
               <p className="text-gray-500 mt-1 max-w-md mx-auto">
-                Conecta tu cuenta de QuickBooks Online para sincronizar facturas, gastos y emitir comprobantes automaticamente.
+                Conecta tu cuenta de QuickBooks Online para sincronizar facturas, gastos y emitir comprobantes automáticamente.
               </p>
             </div>
 
             {subscription && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 max-w-md mx-auto">
                 <p className="text-sm text-blue-800">
-                  Tu plan <strong>{subscription.planName}</strong> incluye la conexion con QuickBooks.
+                  Tu plan <strong>{subscription.planName}</strong> incluye la conexión con QuickBooks.
                 </p>
               </div>
             )}
@@ -236,7 +242,7 @@ export default function QboSettingsPage() {
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
                   </svg>
-                  Configuracion Pendiente
+                  Configuración Pendiente
                 </>
               ) : (
                 <>
@@ -251,14 +257,49 @@ export default function QboSettingsPage() {
 
       {/* Info box */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-700 space-y-2">
-        <p><strong>Como funciona:</strong></p>
+        <p><strong>Cómo funciona:</strong></p>
         <ul className="list-disc list-inside space-y-1">
           <li>Al conectar, eigdo recibe notificaciones cada vez que creas una factura o gasto en QBO</li>
-          <li>Los documentos se transforman automaticamente aplicando tus 5 ciclos de mapeo</li>
-          <li>Se emiten como e-CF a traves de Alanube y se reportan a la DGII</li>
-          <li>Puedes ver el estado de cada documento en la seccion de Documentos</li>
+          <li>Los documentos se transforman automáticamente aplicando tus 5 ciclos de mapeo</li>
+          <li>Se emiten como e-CF a través de Alanube y se reportan a la DGII</li>
+          <li>Puedes ver el estado de cada documento en la sección de Documentos</li>
         </ul>
       </div>
+
+      {/* Disconnect confirmation modal */}
+      {showDisconnectConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full mx-4 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center shrink-0">
+                <svg className="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900">¿Desconectar QuickBooks?</h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  Se detendrán las emisiones automáticas de e-CF. Podrás volver a conectar en cualquier momento.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowDisconnectConfirm(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleDisconnect}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition"
+              >
+                Sí, desconectar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Onboarding navigation */}
       {isOnboarding && (

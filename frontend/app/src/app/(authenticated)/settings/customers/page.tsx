@@ -252,8 +252,13 @@ export default function CustomerMappingsPage() {
           <button
             onClick={async () => {
               try {
-                await api.syncQbo();
-                loadSample();
+                const result = await api.syncQbo();
+                if (result.partial) {
+                  setMessage({ type: 'error', text: result.message });
+                } else {
+                  loadSample();
+                  loadExceptions();
+                }
               } catch (err) {
                 setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Error al sincronizar' });
               }

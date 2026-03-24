@@ -266,7 +266,7 @@ class ApiClient {
   }
 
   async syncQbo() {
-    return this.request<{ message: string }>('/qbo/sync', { method: 'POST' });
+    return this.request<{ message: string; customersAdded: number; vendorsAdded: number; taxCodesAdded: number; itemsAdded: number; partial?: boolean }>('/qbo/sync', { method: 'POST' });
   }
 
   // Documents
@@ -673,9 +673,12 @@ export interface SupportTicketDetail {
 export interface CompanyInfo {
   id: string;
   name: string;
+  rnc?: string;
+  role: string;
   isOnboardingComplete: boolean;
-  hasActiveSubscription: boolean;
-  qboConnected: boolean;
+  subscriptionStatus?: string;
+  planName?: string;
+  hasQboConnection: boolean;
 }
 
 export interface SequenceDto {

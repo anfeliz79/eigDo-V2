@@ -103,10 +103,10 @@ export default function CompanySwitcher() {
                       {company.name}
                     </p>
                     <p className="text-xs text-gray-500">
-                      {company.hasActiveSubscription
-                        ? 'Suscripcion activa'
+                      {company.subscriptionStatus === 'Active'
+                        ? company.planName ?? 'Suscripción activa'
                         : company.isOnboardingComplete
-                        ? 'Sin suscripcion'
+                        ? 'Sin suscripción'
                         : 'Configurando'}
                     </p>
                   </div>
@@ -162,7 +162,7 @@ export default function CompanySwitcher() {
 }
 
 function StatusDot({ company }: { company: CompanyInfo }) {
-  if (company.hasActiveSubscription) {
+  if (company.subscriptionStatus === 'Active') {
     return (
       <span className="w-2.5 h-2.5 rounded-full bg-green-500 flex-shrink-0" title="Activa" />
     );
@@ -171,7 +171,7 @@ function StatusDot({ company }: { company: CompanyInfo }) {
     return (
       <span
         className="w-2.5 h-2.5 rounded-full bg-yellow-400 flex-shrink-0"
-        title="Pendiente"
+        title="Sin suscripción"
       />
     );
   }
